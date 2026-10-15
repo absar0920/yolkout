@@ -50,6 +50,8 @@ func main() {
 	bots := flag.Int("bots", envInt("YOLKOUT_BOTS", 4), "fill rooms with bots up to this many players; 0 disables (env YOLKOUT_BOTS)")
 	maxRooms := flag.Int("maxrooms", envInt("YOLKOUT_MAXROOMS", 200), "maximum live rooms (env YOLKOUT_MAXROOMS)")
 	maxConns := flag.Int("maxconns", envInt("YOLKOUT_MAXCONNS", 4000), "maximum WebSocket connections (env YOLKOUT_MAXCONNS)")
+	maxPerIP := flag.Int("maxconnsperip", envInt("YOLKOUT_MAXCONNSPERIP", 8), "maximum WebSocket connections per client IP, -1 = unlimited; loopback is exempt (env YOLKOUT_MAXCONNSPERIP)")
+	trustProxy := flag.Bool("trustproxy", os.Getenv("YOLKOUT_TRUSTPROXY") == "1", "behind a reverse proxy: take the client IP from the last X-Forwarded-For entry (env YOLKOUT_TRUSTPROXY=1)")
 	anyOrigin := flag.Bool("anyorigin", os.Getenv("YOLKOUT_ANYORIGIN") == "1", "accept WebSocket upgrades from any Origin (env YOLKOUT_ANYORIGIN=1)")
 	flag.Parse()
 	if *dataDir == "" {
@@ -64,7 +66,8 @@ func main() {
 	if err != nil {
 		log.Printf("stats: %v (starting with an empty leaderboard)", err)
 	}
-	mgr := game.NewManager(g, game.Config{MaxRooms: *maxRooms, MaxConns: *maxConns, BotFill: *bots, AnyOrigin: *anyOrigin}, st)
+	mgr := game.NewManager(g, game.Config{MaxRooms: *maxRooms, MaxConns: *maxConns, MaxConnsPerIP: *maxPerIP, TrustProxy: *trustProxy,
+		BotFill: *bots, AnyOrigin: *anyOrigin}, st)
 
 	mux := http.NewServeMux()
 	mux.Handle("/data/", http.StripPrefix("/data", web.NewDir(*dataDir)))

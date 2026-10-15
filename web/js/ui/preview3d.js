@@ -15,11 +15,24 @@ async function loadMods() {
   return mods;
 }
 
+let glOK = null;
+
+/** WebGL support, probed once: every probe context counts against the browser's live-context cap. */
 function webglOK() {
-  try {
-    const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
-  } catch { return false; }
+  if (glOK === null) {
+    try {
+      const c = document.createElement("canvas");
+      const gl = c.getContext("webgl2") || c.getContext("webgl");
+      glOK = !!gl;
+      if (gl) gl.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch { glOK = false; }
+  }
+  return glOK;
+}
+
+function releaseRenderer(renderer) {
+  renderer.dispose();
+  renderer.forceContextLoss();
 }
 
 /**
@@ -70,7 +83,7 @@ export async function mountPreview3D(host, cos, cls) {
     avatar = new models.EggAvatar(data, { cos, cls, nameplate: false });
   } catch (e) {
     console.warn("3D preview avatar failed", e);
-    renderer.dispose();
+    releaseRenderer(renderer);
     canvas.remove();
     return null;
   }
@@ -135,7 +148,9 @@ export async function mountPreview3D(host, cos, cls) {
       alive = false;
       cancelAnimationFrame(raf);
       try { avatar.dispose(); } catch { /* ignore */ }
-      renderer.dispose();
+      floor.geometry.dispose();
+      floor.material.dispose();
+      releaseRenderer(renderer);
       canvas.remove();
     },
   };

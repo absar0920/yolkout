@@ -67,7 +67,7 @@ func TestWebSocketEndToEnd(t *testing.T) {
 	}
 	w := readUntil(t, c, "welcome", 2*time.Second)
 	room := w["room"].(map[string]any)
-	if room["map"] != "diner" || room["mode"] != "ffa" || len(room["code"].(string)) != 5 {
+	if room["map"] != "diner" || room["mode"] != "ffa" || len(room["code"].(string)) != g.Rules.Rooms.CodeLength {
 		t.Fatalf("welcome %v", w)
 	}
 	readUntil(t, c, "spawn", time.Second)

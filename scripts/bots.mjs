@@ -26,6 +26,7 @@ const HTTP = URL_.replace(/^ws/, "http").replace(/\/ws$/, "");
 const N = Math.max(2, +(args.n || 24));
 const SECS = +(args.secs || 30);
 const PID = args.pid ? +args.pid : 0;
+const CODE_LEN = JSON.parse(readFileSync(new URL("../shared/data/rules.json", import.meta.url), "utf8")).rooms.codeLength;
 const CLASSES = ["benedict", "deviler", "poacher", "piercer", "frittata", "overeasy", "souffle"];
 const q = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -76,7 +77,7 @@ async function protocolChecks() {
   c = await connect();
   c.ws.send(hello({ create: 1, mode: "ffa" }));
   const w = await waitFor(c, (m) => m.t === "welcome");
-  check("protocol: create private room", w && w.room.priv === 1 && /^[A-Z2-9]{5}$/.test(w.room.code), w && w.room.code);
+  check("protocol: create private room", w && w.room.priv === 1 && new RegExp(`^[A-Z2-9]{${CODE_LEN}}$`).test(w.room.code), w && w.room.code);
   check("protocol: welcome fields", w && w.tr === 60 && w.se === 2 && Array.isArray(w.players) && w.match && typeof w.pk === "string");
   const sp = await waitFor(c, (m) => m.t === "spawn" && w && m.id === w.id);
   check("protocol: spawn after welcome", !!sp);
@@ -107,7 +108,7 @@ async function protocolChecks() {
   check("protocol: >4096 byte frame -> err too_big", e && e.code === "too_big", e && e.code);
 
   c = await connect();
-  c.ws.send(hello({ room: "QQQQQ" }));
+  c.ws.send(hello({ room: "QQQQQQ" }));
   e = await waitFor(c, (m) => m.t === "err");
   check("protocol: unknown room -> err no_room", e && e.code === "no_room", e && e.code);
 

@@ -4,11 +4,13 @@
 //  - spawns/pickups/nests: not inside solids, standing exactly on a floor top, enough team spawns
 //  - reachability: every spawn/pickup/nest is in the same strongly-connected walk/jump/drop
 //    graph as the first spawn (coarse 0.5u grid using the canonical physics constants)
+//  - spawn safety (team modes): no team-1 spawn has a clear line from its eye to the body centre
+//    of a team-2 spawn inside fog range, so nobody can snipe the enemy spawn from their own base
 // Usage: node scripts/validate-maps.mjs [mapId...]   (exit 1 on any error)
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeConsts, makeWorld, overlapsSolid } from "../shared/ref/sim.mjs";
+import { makeConsts, makeWorld, overlapsSolid, raycastWorld } from "../shared/ref/sim.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = join(root, "shared/data");
@@ -71,6 +73,18 @@ for (const f of files) {
   if (map.spawns.length < 12) E(`need >= 12 spawns, have ${map.spawns.length}`);
   if ((map.modes.includes("teams") || map.modes.includes("nest")) && (t1 < 6 || t2 < 6)) E(`need >= 6 spawns per team (have ${t1}/${t2})`);
   if (map.modes.includes("nest")) for (const t of [1, 2]) if (map.nests.filter((n) => n.team === t).length !== 1) E(`need exactly one nest for team ${t}`);
+  // spawn-to-enemy-spawn sightlines (eye -> body centre)
+  if (map.modes.includes("teams") || map.modes.includes("nest")) {
+    const fogFar = (map.palette && map.palette.fogFar) || Infinity;
+    for (const a of map.spawns.filter((s) => s.team === 1)) for (const b of map.spawns.filter((s) => s.team === 2)) {
+      const o = [a.pos[0], a.pos[1] + C.eyeHeight, a.pos[2]];
+      const d = [b.pos[0] - o[0], b.pos[1] + 0.9 - o[1], b.pos[2] - o[2]];
+      const L = Math.hypot(d[0], d[1], d[2]);
+      if (L < fogFar && raycastWorld(world, o[0], o[1], o[2], d[0] / L, d[1] / L, d[2] / L, L) < 0) {
+        E(`team-1 spawn ${a.pos} can see team-2 spawn ${b.pos} (${L.toFixed(1)}u): add cover or move a spawn`);
+      }
+    }
+  }
   for (let i = 0; i < map.spawns.length; i++) for (let j = i + 1; j < map.spawns.length; j++) {
     const a = map.spawns[i].pos, b = map.spawns[j].pos;
     if (Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 1.2) E(`spawns ${i} and ${j} overlap`);

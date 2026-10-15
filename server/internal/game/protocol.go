@@ -283,6 +283,7 @@ var errText = map[string]string{
 	"no_room":     "No room with that code",
 	"server_full": "Server is full, try again soon",
 	"rate":        "Too many messages",
+	"too_many":    "Too many attempts, wait a minute and try again",
 	"too_big":     "Message too large",
 	"idle":        "Disconnected for inactivity",
 	"bad_msg":     "Malformed message",

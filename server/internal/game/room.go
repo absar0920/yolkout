@@ -20,6 +20,11 @@ const (
 	stateEnded = 1
 )
 
+// jitterBuffer is the input backlog (in ticks) the room keeps before it
+// consumes more than one input per tick; it absorbs batched and jittery
+// client sends so remote players move one step per tick.
+const jitterBuffer = 3
+
 // roomEvent is a join or leave queued by a connection goroutine.
 type roomEvent struct {
 	join  bool
@@ -152,8 +157,12 @@ type Room struct {
 	sbDirty  bool
 	humans   int
 	emptyAt  int64
+	hadHuman bool        // a human was ever welcomed (unused private rooms expire fast)
+	dead     atomic.Bool // the room goroutine crashed; matchmaking must skip it
 
 	botWorld sim.World
+	nav      *navGraph
+	navS     navSearch
 	acts     []sim.Action
 	dirs     [][3]float64
 	scratch  []byte
@@ -176,6 +185,7 @@ func (r *Room) loadMap(id string) {
 	r.MapID = id
 	r.Map = r.g.Maps[id]
 	r.World = sim.MakeWorld(r.Map)
+	r.nav = r.mgr.nav.get(r.Map, r.C)
 	r.killY = r.Map.KillYValue()
 	idc := id
 	r.curMap.Store(&idc)
@@ -329,8 +339,23 @@ func (r *Room) run() {
 	defer func() {
 		if e := recover(); e != nil {
 			log.Printf("room %s panic: %v\n%s", r.Code, e, debug.Stack())
-			r.closeAll()
-			r.mgr.tryRemoveEmpty(r)
+			// unregister unconditionally: clients still hold reservations, and
+			// leave() never deletes a private room
+			r.dead.Store(true)
+			r.mgr.mu.Lock()
+			if r.mgr.rooms[r.Code] == r {
+				delete(r.mgr.rooms, r.Code)
+			}
+			r.mgr.mu.Unlock()
+			func() {
+				defer func() { _ = recover() }() // the room state may be what panicked
+				r.closeAll()
+			}()
+			// joins queued before the room was unregistered get "unavailable"
+			for i := 0; i < 10; i++ {
+				r.drainEvents()
+				time.Sleep(20 * time.Millisecond)
+			}
 		}
 	}()
 	dt := time.Second / time.Duration(r.g.Rules.Net.TickRate)
@@ -343,7 +368,11 @@ func (r *Room) run() {
 		default:
 		}
 		r.tick()
-		if r.Priv && r.humans == 0 && r.k-r.emptyAt > r.ticks(r.mgr.Cfg.EmptyGrace.Seconds()) {
+		grace := r.mgr.Cfg.EmptyGrace
+		if !r.hadHuman {
+			grace = min(grace, r.mgr.Cfg.UnusedGrace)
+		}
+		if r.Priv && r.humans == 0 && r.k-r.emptyAt > r.ticks(grace.Seconds()) {
 			if r.mgr.tryRemoveEmpty(r) {
 				r.closeAll()
 				return
@@ -406,8 +435,15 @@ func (r *Room) tick() {
 			r.botThink(p)
 		}
 		p.tokens = min(tokenMax, p.tokens+1)
+		// De-jitter: one input per tick, so a player advances one sim step per
+		// tick even though clients send in batches. Catch up faster only once
+		// the backlog grows past the jitter buffer.
+		limit := 1
+		if len(p.pending()) > jitterBuffer {
+			limit = maxPer
+		}
 		consumed := 0
-		for len(p.pending()) > 0 && p.tokens >= 1 && consumed < maxPer {
+		for len(p.pending()) > 0 && p.tokens >= 1 && consumed < limit {
 			in := p.popInput()
 			p.tokens--
 			consumed++
@@ -418,9 +454,11 @@ func (r *Room) tick() {
 			p.starve = 0
 		} else {
 			p.starve++
-			if p.starve >= r.g.Rules.Net.StarveTicks {
-				in := sim.Input{Seq: 0, Yaw: p.Yaw, Pitch: p.Pitch, Slot: p.Slot, Rt: float64(r.k)}
-				r.simulate(p, &in, live)
+			if p.starve >= r.g.Rules.Net.StarveTicks && p.Alive && live {
+				// null input: movement only (keys 0). The weapon state machine is
+				// not ticked, so held buttons, bursts and timers resume exactly as
+				// the client predicted when its delayed inputs arrive.
+				sim.StepMove(r.World, r.C, &p.PS, 0, p.Yaw, sim.SpeedMulFor(r.C, p.Defs, &p.WS, 0))
 			}
 		}
 	}
@@ -594,6 +632,7 @@ func (r *Room) addHuman(c *Client, h hello) {
 	c.mu.Unlock()
 	r.insert(p)
 	r.humans++
+	r.hadHuman = true
 	r.welcome(p)
 	r.except(p.ID, mustJSON(rosterMsg{T: "join", P: r.roster(p)}))
 	r.except(p.ID, mustJSON(sysMsg{T: "sys", M: p.Name + " joined"}))

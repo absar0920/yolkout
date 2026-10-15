@@ -21,6 +21,7 @@ export function initHome(app) {
   const alphabet = (data.rules.rooms && data.rules.rooms.codeAlphabet) || "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const codeLen = (data.rules.rooms && data.rules.rooms.codeLength) || 5;
   const codeRe = new RegExp(`^[${alphabet}]{${codeLen}}$`);
+  codeInput.maxLength = codeLen;
 
   // ---------- name
   nameInput.value = profile.name || "";

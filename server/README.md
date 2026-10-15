@@ -21,6 +21,8 @@ cd server && go test -race ./...
 | `-bots` | `4` (`YOLKOUT_BOTS`) | fill rooms with server bots up to N players (0 = off) |
 | `-maxrooms` | `200` (`YOLKOUT_MAXROOMS`) | live room cap (`server_full` beyond) |
 | `-maxconns` | `4000` (`YOLKOUT_MAXCONNS`) | WebSocket connection cap (HTTP 503 beyond) |
+| `-maxconnsperip` | `8` (`YOLKOUT_MAXCONNSPERIP`) | connections per client IP (HTTP 429 beyond, -1 = unlimited; loopback is exempt) |
+| `-trustproxy` | off (`YOLKOUT_TRUSTPROXY=1`) | key per-IP limits on the last `X-Forwarded-For` entry (set it only behind your own reverse proxy) |
 | `-anyorigin` | off (`YOLKOUT_ANYORIGIN=1`) | accept cross-origin WebSocket upgrades |
 
 ## HTTP

@@ -21,7 +21,8 @@ func (r *Room) applyInput(p *Player, in *sim.Input, live bool) {
 func (r *Room) simulate(p *Player, in *sim.Input, live bool) {
 	p.Yaw = in.Yaw
 	p.Pitch = sim.ClampPitch(r.C, in.Pitch)
-	if in.Slot == 0 || in.Slot == 1 {
+	// inputs sent while dead must not change the loadout picked at respawn
+	if p.Alive && (in.Slot == 0 || in.Slot == 1) {
 		p.Slot = in.Slot
 	}
 	p.Btns = in.Buttons

@@ -68,9 +68,12 @@ type Client struct {
 	// queued is owned by the room goroutine (inputs moved out of the inbox).
 	queued []sim.Input
 
+	ip string // per-IP limit key ("" = unlimited), see limits.go
+
 	mu        sync.Mutex
 	inputs    []sim.Input
 	lastSeq   uint32
+	seqGaps   bucket // budget for skipped seqs (see pushInputs)
 	lds       []ldReq
 	chats     []chatReq
 	notes     []string
@@ -80,7 +83,8 @@ type Client struct {
 }
 
 func newClient(conn *websocket.Conn, mgr *Manager) *Client {
-	return &Client{conn: conn, mgr: mgr, send: make(chan frame, 256), done: make(chan struct{}), wdone: make(chan struct{}), lastInput: time.Now()}
+	return &Client{conn: conn, mgr: mgr, send: make(chan frame, 256), done: make(chan struct{}), wdone: make(chan struct{}), lastInput: time.Now(),
+		seqGaps: newBucket(seqGapRate, seqGapBurst)}
 }
 
 // SendFrame queues one frame; a client that cannot keep up is dropped.
@@ -291,6 +295,7 @@ func (c *Client) serve() {
 // Returns false when the client should be dropped for repeated garbage.
 func (c *Client) pushInputs(entries [][]float64, now time.Time) bool {
 	net := &c.mgr.G.Rules.Net
+	accepted := 0
 	if len(entries) > net.MaxInputsPerBatch {
 		entries = entries[:net.MaxInputsPerBatch]
 	}
@@ -304,6 +309,17 @@ func (c *Client) pushInputs(entries [][]float64, now time.Time) bool {
 		seq := e[0]
 		if seq != math.Trunc(seq) || seq <= float64(c.lastSeq) || seq > math.MaxUint32 {
 			continue
+		}
+		// Shot spread is seeded by seq, so a client free to skip seqs could pick
+		// the seed with the tightest spread. Legit gaps are rare and small (a
+		// map load drops at most one unsent batch), so skips spend a slowly
+		// refilling budget; an input past the budget is dropped.
+		if gap := seq - float64(c.lastSeq) - 1; gap > 0 && c.lastSeq != 0 {
+			if c.seqGaps.avail(now) < gap {
+				c.lastSeq = uint32(seq)
+				continue
+			}
+			c.seqGaps.tokens -= gap
 		}
 		yaw, pitch := e[2], e[3]
 		if math.IsNaN(yaw) || math.IsInf(yaw, 0) || math.IsNaN(pitch) || math.IsInf(pitch, 0) {
@@ -325,12 +341,15 @@ func (c *Client) pushInputs(entries [][]float64, now time.Time) bool {
 			rt = math.NaN() // treated as "now" by the room
 		}
 		c.lastSeq = uint32(seq)
+		accepted++
 		c.inputs = append(c.inputs, sim.Input{Seq: uint32(seq), Keys: int(e[1]) & 31, Yaw: yaw, Pitch: pitch,
 			Buttons: int(e[4]) & 31, Slot: slot, Rt: rt})
 	}
 	if over := len(c.inputs) - net.InputQueueMax; over > 0 {
 		c.inputs = append(c.inputs[:0], c.inputs[over:]...)
 	}
-	c.lastInput = now
+	if accepted > 0 { // an empty or all-stale batch does not count as activity (idle kick)
+		c.lastInput = now
+	}
 	return c.badInputs < 600
 }

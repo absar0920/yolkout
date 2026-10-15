@@ -392,7 +392,8 @@ body.in-game .loading { background: rgba(13, 12, 16, .85); }
 
 /* ------------------------------------------------------------ game + HUD */
 .game-root { position: fixed; inset: 0; z-index: 5; background: #0d0c10; overflow: hidden; }
-.game-root > canvas { display: block; width: 100%; height: 100%; }
+.game-root > canvas, .game-session > canvas { display: block; width: 100%; height: 100%; }
+.game-session { position: absolute; inset: 0; }
 
 .hud {
   position: fixed; inset: 0; z-index: 10; pointer-events: none; color: #fff; user-select: none;

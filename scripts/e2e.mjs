@@ -19,6 +19,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const CODE_LEN = JSON.parse(readFileSync(join(here, "../shared/data/rules.json"), "utf8")).rooms.codeLength;
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) => {
   if (a.startsWith("--")) acc.push([a.slice(2), arr[i + 1] && !arr[i + 1].startsWith("--") ? arr[i + 1] : "1"]);
   return acc;
@@ -353,7 +354,7 @@ async function privateRooms(browser) {
   await pa.waitForSelector("#hud:not([hidden])", { timeout: 20000 });
   const code = await pa.evaluate(() => window.__yolkoutUI.game.room.code);
   const priv = await pa.evaluate(() => window.__yolkoutUI.game.room.priv);
-  check("private: room created", /^[A-Z0-9]{5}$/.test(code) && priv === 1, code);
+  check("private: room created", new RegExp(`^[A-Z0-9]{${CODE_LEN}}$`).test(code) && priv === 1, code);
   const url = await pa.evaluate(() => location.search);
   check("private: invite link in URL", url.includes(code), url);
   const listed = await (await fetch(BASE + "/api/rooms")).json();
@@ -376,7 +377,7 @@ async function privateRooms(browser) {
   pc.on("pageerror", (e) => errC.push(e.message));
   await pc.goto(BASE + "/");
   await pc.waitForSelector("body.ready");
-  await pc.fill("#code-input", "ZZZZZ");
+  await pc.fill("#code-input", "ZZZZZZ");
   await pc.click("#join-btn");
   await sleep(2500);
   const toastTxt = await pc.evaluate(() => document.getElementById("toasts").textContent);

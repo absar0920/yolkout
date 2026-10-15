@@ -12,6 +12,25 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vect
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _z = new THREE.Vector3(0, 0, 1);
 const _c = new THREE.Color(), _fwd = new THREE.Vector3(0, 0, -1), _qr = new THREE.Quaternion();
 
+/**
+ * Set an InstancedMesh's live count and upload only that range. Nothing is uploaded when no
+ * instance is live (count 0 draws nothing), instead of the whole pool every frame.
+ */
+function uploadInstances(mesh, n) {
+  mesh.count = n;
+  if (n === 0) return;
+  const im = mesh.instanceMatrix;
+  im.clearUpdateRanges();
+  im.addUpdateRange(0, n * 16);
+  im.needsUpdate = true;
+  const ic = mesh.instanceColor;
+  if (ic) {
+    ic.clearUpdateRanges();
+    ic.addUpdateRange(0, n * 3);
+    ic.needsUpdate = true;
+  }
+}
+
 export class Effects {
   constructor(renderer, sim, opts = {}) {
     this.r = renderer;
@@ -275,9 +294,7 @@ export class Effects {
       tm.setColorAt(n, _c);
       n++;
     }
-    tm.count = n;
-    tm.instanceMatrix.needsUpdate = true;
-    if (tm.instanceColor) tm.instanceColor.needsUpdate = true;
+    uploadInstances(tm, n);
 
     // particles
     const pm = this.partMesh;
@@ -310,9 +327,7 @@ export class Effects {
       pm.setColorAt(n, _c);
       n++;
     }
-    pm.count = n;
-    pm.instanceMatrix.needsUpdate = true;
-    if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
+    uploadInstances(pm, n);
 
     // billboards (glow + smoke) face the camera
     const cq = camera.quaternion;
@@ -332,9 +347,7 @@ export class Effects {
       gm.setColorAt(n, _c);
       n++;
     }
-    gm.count = n;
-    gm.instanceMatrix.needsUpdate = true;
-    if (gm.instanceColor) gm.instanceColor.needsUpdate = true;
+    uploadInstances(gm, n);
 
     const sm = this.smokeMesh;
     n = 0;
@@ -353,9 +366,7 @@ export class Effects {
       sm.setColorAt(n, _c);
       n++;
     }
-    sm.count = n;
-    sm.instanceMatrix.needsUpdate = true;
-    if (sm.instanceColor) sm.instanceColor.needsUpdate = true;
+    uploadInstances(sm, n);
     this.smokeMesh.material.opacity = 1;
 
     // explosions

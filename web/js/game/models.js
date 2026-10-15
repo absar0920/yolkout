@@ -442,7 +442,21 @@ function makeShell() {
 
 // ------------------------------------------------------------------ pickups / nests
 
+// Pickups, nests and golden eggs are built once per type / team colour and cloned (sharing
+// geometry and materials), so a map change creates no new GPU resources.
+const propTemplates = new Map();
+function fromTemplate(key, make) {
+  if (!propTemplates.has(key)) propTemplates.set(key, make());
+  return propTemplates.get(key).clone(true);
+}
+
 export function buildPickup(type) {
+  const g = fromTemplate(`pickup|${type}`, () => makePickup(type));
+  g.userData.inner = g.children[0];
+  return g;
+}
+
+function makePickup(type) {
   const g = new THREE.Group();
   const inner = new THREE.Group();
   inner.position.y = 0.55;
@@ -475,11 +489,14 @@ export function buildPickup(type) {
   g.add(ring);
   inner.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   mergeGroup(inner);
-  g.userData.inner = inner;
   return g;
 }
 
 export function buildNest(teamColor) {
+  return fromTemplate(`nest|${teamColor}`, () => makeNest(teamColor));
+}
+
+function makeNest(teamColor) {
   const g = new THREE.Group();
   const straw = lam("#c9a24b");
   g.add(mesh(tor(0.75, 0.2, 8, 22), straw, 0, 0.15, 0, Math.PI / 2, 0, 0));
@@ -497,6 +514,10 @@ export function buildNest(teamColor) {
 }
 
 export function buildGoldenEgg(teamColor) {
+  return fromTemplate(`gegg|${teamColor}`, () => makeGoldenEgg(teamColor));
+}
+
+function makeGoldenEgg(teamColor) {
   const g = new THREE.Group();
   const e = new THREE.Mesh(eggGeometry(), new THREE.MeshPhongMaterial({
     color: 0xf2c94c, emissive: new THREE.Color(teamColor), emissiveIntensity: 0.25, shininess: 100, specular: 0x886622,

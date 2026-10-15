@@ -20,11 +20,16 @@ import (
 
 // Config is the server-wide configuration.
 type Config struct {
-	MaxRooms   int
-	MaxConns   int
-	BotFill    int // fill rooms with bots up to this many players (0 = no bots)
-	AnyOrigin  bool
-	EmptyGrace time.Duration // private room lifetime when empty (default 60s)
+	MaxRooms        int
+	MaxPrivateRooms int // cap on private rooms so public matchmaking always has room (default MaxRooms/2)
+	MaxConns        int
+	MaxConnsPerIP   int  // live sockets per client IP (default 8, < 0 = unlimited)
+	TrustProxy      bool // key per-IP limits on the last X-Forwarded-For entry
+	LimitLoopback   bool // apply per-IP limits to loopback clients too (tests)
+	BotFill         int  // fill rooms with bots up to this many players (0 = no bots)
+	AnyOrigin       bool
+	EmptyGrace      time.Duration // private room lifetime when empty (default 60s)
+	UnusedGrace     time.Duration // lifetime of a private room no human ever entered (default 5s)
 }
 
 // Manager owns the rooms and matchmaking.
@@ -36,12 +41,14 @@ type Manager struct {
 
 	mu       sync.Mutex
 	rooms    map[string]*Room
+	ips      map[string]*ipState // per-IP limits (limits.go)
 	seq      int64
 	shutdown bool
 	wg       sync.WaitGroup // room goroutines
 	writers  sync.WaitGroup // client write pumps (so shutdown can flush the final notice + close frame)
 
 	conns    atomic.Int64
+	nav      navCache // per-map bot nav graphs
 	upgrader websocket.Upgrader
 }
 
@@ -50,13 +57,22 @@ func NewManager(g *data.Game, cfg Config, st *stats.Store) *Manager {
 	if cfg.MaxRooms <= 0 {
 		cfg.MaxRooms = 200
 	}
+	if cfg.MaxPrivateRooms <= 0 {
+		cfg.MaxPrivateRooms = max(1, cfg.MaxRooms/2)
+	}
 	if cfg.MaxConns <= 0 {
 		cfg.MaxConns = 4000
+	}
+	if cfg.MaxConnsPerIP == 0 {
+		cfg.MaxConnsPerIP = 8
+	}
+	if cfg.UnusedGrace <= 0 {
+		cfg.UnusedGrace = 5 * time.Second
 	}
 	if cfg.EmptyGrace <= 0 {
 		cfg.EmptyGrace = 60 * time.Second
 	}
-	m := &Manager{G: g, C: sim.MakeConsts(g.Rules), Cfg: cfg, Stats: st, rooms: map[string]*Room{}}
+	m := &Manager{G: g, C: sim.MakeConsts(g.Rules), Cfg: cfg, Stats: st, rooms: map[string]*Room{}, ips: map[string]*ipState{}}
 	// permessage-deflate (no context takeover) roughly halves snapshot bandwidth; small
 	// frames are sent uncompressed (see writePump).
 	m.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 8192, EnableCompression: true}
@@ -71,6 +87,12 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) { m.ServeWS(
 
 // ServeWS upgrades /ws requests.
 func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
+	ip := m.clientIP(r)
+	if !m.acquireIP(ip) {
+		http.Error(w, "too many connections", http.StatusTooManyRequests)
+		return
+	}
+	defer m.releaseIP(ip)
 	if m.conns.Add(1) > int64(m.Cfg.MaxConns) {
 		m.conns.Add(-1)
 		http.Error(w, "server full", http.StatusServiceUnavailable)
@@ -83,6 +105,7 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = conn.SetCompressionLevel(flate.BestSpeed)
 	c := newClient(conn, m)
+	c.ip = ip
 	m.mu.Lock()
 	down := m.shutdown
 	m.mu.Unlock()
@@ -130,6 +153,17 @@ func (m *Manager) createRoomLocked(md *data.Mode, mapID string, priv bool) *Room
 	if len(m.rooms) >= m.Cfg.MaxRooms {
 		return nil
 	}
+	if priv {
+		n := 0
+		for _, x := range m.rooms {
+			if x.Priv {
+				n++
+			}
+		}
+		if n >= m.Cfg.MaxPrivateRooms {
+			return nil
+		}
+	}
 	m.seq++
 	r := newRoom(m, m.newCode(), md, mapID, priv, m.seq)
 	m.rooms[r.Code] = r
@@ -160,16 +194,32 @@ func (m *Manager) join(c *Client, h *inMsg) string {
 	}
 	maxP := m.G.Rules.Net.MaxPlayersPerRoom
 	md := m.modeFor(h.Mode)
+	now := time.Now()
 	var r *Room
 	switch {
 	case truthy(h.Create):
+		if c.ip != "" && m.ipLocked(c.ip, now).creates.avail(now) < 1 {
+			return "too_many"
+		}
 		r = m.createRoomLocked(md, m.mapFor(md, h.Map), true)
 		if r == nil {
 			return "server_full"
 		}
+		if c.ip != "" {
+			m.ipLocked(c.ip, now).creates.take(now)
+		}
 	case strings.TrimSpace(h.Room) != "":
+		var ips *ipState
+		if c.ip != "" {
+			if ips = m.ipLocked(c.ip, now); ips.misses.avail(now) < 1 {
+				return "too_many" // too many wrong codes: cool down before guessing again
+			}
+		}
 		r = m.rooms[strings.ToUpper(strings.TrimSpace(h.Room))]
-		if r == nil {
+		if r == nil || r.dead.Load() {
+			if ips != nil {
+				ips.misses.take(now)
+			}
 			return "no_room"
 		}
 		if r.reserved >= maxP {
@@ -177,7 +227,7 @@ func (m *Manager) join(c *Client, h *inMsg) string {
 		}
 	default:
 		for _, x := range m.rooms {
-			if x.Priv || x.Mode.ID != md.ID || x.reserved >= maxP {
+			if x.Priv || x.Mode.ID != md.ID || x.reserved >= maxP || x.dead.Load() {
 				continue
 			}
 			if r == nil || x.reserved > r.reserved || (x.reserved == r.reserved && x.created < r.created) {

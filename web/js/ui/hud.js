@@ -240,6 +240,8 @@ export function initHud(app) {
 
   function buildObjective(mode) {
     clear(el.objective);
+    // the elements are new: forget their cached values so updateObjective() writes them again
+    for (const k of cache.keys()) if (k.startsWith("obj")) cache.delete(k);
     st.objKey = mode;
     const md = data.modes.modes[mode] || {};
     el.objective.dataset.mode = mode;
@@ -528,7 +530,7 @@ export function initHud(app) {
     const map = {
       room_full: "That room is full.", no_room: "That room doesn't exist (any more).", server_full: "The server is full right now. Try again soon.",
       version: "Your game is out of date. Reload the page.", socket: "Lost connection to the server.", timeout: "The server did not answer.",
-      idle: "You were idle for too long.", rate: "Too many messages: disconnected.", too_big: "Message too large: disconnected.",
+      idle: "You were idle for too long.", rate: "Too many messages: disconnected.", too_many: "Too many attempts. Wait a minute and try again.", too_big: "Message too large: disconnected.",
       bad_msg: "Protocol error: disconnected.", bad_hello: "The server rejected the join request.", unavailable: "Online play is unavailable on this server.",
       closed: "You left the game.", map: "Could not load the map.", restart: "The server is restarting. Reconnect in a few seconds.",
     };

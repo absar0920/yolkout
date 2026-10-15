@@ -58,6 +58,7 @@ export function barnyard() {
     m.box(10, 0, -14.3, 20, 1, -14, "fence");
     m.box(24, 0, -12, 24.3, 1, -4, "fence");
     m.box(10, 0, -11, 14, 0.8, -10, "water"); // trough
+    m.box(11.5, 0, -12.6, 13.5, 1.6, -11.4, "hay"); // stacked bale: breaks the east spawn-to-spawn sightline
     // tractor
     m.box(-22, 0, -4, -18, 1.6, -1, "tractor");
     m.box(-21.5, 1.6, -3.5, -19.5, 3, -1.5, "glass");
@@ -148,8 +149,10 @@ export function countertop() {
     m.box(-27, 0, -4.5, -22, 1.2, -4, "bread");
     m.box(-27, 0, 4, -22, 1.2, 4.5, "bread");
     m.nest(1, -25, 0, 0);
+    // butter dish in front of the base: blocks the spawn-to-spawn sightline down the bridge lane
+    m.box(-19.5, 0, -2.5, -18.5, 2.5, 2.5, "butter");
 
-    for (const [x, z] of [[-24.5, -2], [-24.5, 2], [-26, -10], [-26, 10], [-20, -2], [-26, -15]]) m.spawn(x, 0, z, -PI / 2, 1);
+    for (const [x, z] of [[-24.5, -2], [-24.5, 2], [-26, -10], [-26, 10], [-21, -2], [-21, -17.5]]) m.spawn(x, 0, z, -PI / 2, 1);
     m.spawn(-12, 0, 0, -PI / 2, 0);
     m.spawn(-14, 0, 17.5, PI, 0);
     m.spawn(-6, 0, -16, 0, 0);
@@ -259,6 +262,8 @@ export function diner() {
     for (const x of [-5, -3, -1]) m.box(x - 0.3, 0, 1.2, x + 0.3, 0.7, 1.8, "vinyl");
     // kitchen pass + grill block (west end)
     m.box(-13.5, 0, 2.5, -10, 1.1, 5.5, "steel");
+    // host stand by the west window: breaks the spawn-to-spawn sightline through both doors
+    m.box(-12.5, 0, -3.5, -11.5, 1.5, -2.3, "chrome");
     // roof sign post + AC units
     m.box(-4.5, 4.5, -0.2, -4, 6, 0.2, "chrome");
     m.box(-11, 4.5, -3, -9, 5.7, -1, "metal");
@@ -275,6 +280,7 @@ export function diner() {
     m.stairs("-x", 4.7, 13, 16, 3, "pallet", { rise: 1, run: 0.9 });
     // lot dividers
     m.box(-18, 0, -20, -17.6, 0.6, -10, "paint");
+    m.box(-15, 0, -11, -13, 1.6, -9, "dumpster"); // recycling bin: cover across the lot lane
     m.box(14, 0, -21.5, 22, 1, -21, "paint");
     m.nest(1, -25, 0, 0);
 

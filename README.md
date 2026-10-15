@@ -26,7 +26,7 @@ Requirements: Go >= 1.23 and Node 22. Node is only used for scripts and tests, n
 
 Open http://localhost:8080, type a name and press **PLAY**. Quickplay drops you into the fullest public room for the chosen
 mode, and server bots fill the room up to 4 players while you wait for humans. **Practice vs bots** runs a complete
-in-browser server and works offline. **Create room** makes a private room. Share its 5-letter code or the `?room=CODE` link.
+in-browser server and works offline. **Create room** makes a private room. Share its 6-character code or the `?room=CODE` link.
 
 ## Controls
 
@@ -99,7 +99,7 @@ scripts/
   e2e.mjs           browser end-to-end test (Playwright)
   bots/bots.mjs     simple random-walk bots for a running server (make bots-wander)
   mapgen/           map source code; `make maps` emits shared/data/maps/*.json
-  validate-maps.mjs schema, collision, spawn, floor-coverage and reachability checks
+  validate-maps.mjs schema, collision, spawn, floor-coverage, reachability and spawn-sightline checks
   gen-testvectors.mjs
 ```
 
@@ -109,6 +109,12 @@ scripts/
   The server owns hits, damage, pickups, objectives and scores. It lag-compensates hitscan and melee by rewinding targets
   to the client's render tick (up to 300 ms). Each connection has its own read and write goroutines, rate limits,
   an input token bucket (anti speed-hack) and a bounded send queue, so a slow client is dropped instead of stalling a room.
+  Rooms run at most one input per player per tick while the backlog is small (a 3-input jitter buffer), so remote
+  players advance one step per tick even though clients send in batches. Per-IP limits cap live sockets (8),
+  private-room creation (3/min) and wrong room codes (10/min); loopback is exempt, and `-trustproxy` keys them on
+  `X-Forwarded-For` behind a reverse proxy. At most half of `-maxrooms` can be private.
+* **Server bots** path-find on a per-map 0.5 u walk/jump/drop graph (A*, the same graph `validate-maps.mjs` checks),
+  split into attackers and defenders in Nest Raid, and keep pushing the objective while shooting.
 * **Client** (three.js): predicts its own movement and weapon state with the *same* `shared/ref/sim.mjs` code
   (served at `/ref/sim.mjs` and imported as `yolkout/sim`). It reconciles against each snapshot (ack + full-precision `me`
   state, replaying unacknowledged inputs) and interpolates remote players and projectiles 100 ms behind.
@@ -145,6 +151,8 @@ scripts/
 | `-bots` | `4` | fill rooms with server bots up to N players while a human is present (0 = off) |
 | `-maxrooms` | `200` | live room cap |
 | `-maxconns` | `4000` | WebSocket connection cap |
+| `-maxconnsperip` | `8` | WebSocket connections per client IP (-1 = unlimited; loopback is exempt) |
+| `-trustproxy` | off | take the client IP from the last `X-Forwarded-For` entry (only behind your own proxy) |
 | `-anyorigin` | off | accept cross-origin WebSocket upgrades |
 
 Endpoints: `/` (client), `/data/*`, `/ref/sim.mjs`, `/ws`, `/healthz`, `/api/rooms`, `/api/stats?by=score|kills|wins|kd|streak|captures`.

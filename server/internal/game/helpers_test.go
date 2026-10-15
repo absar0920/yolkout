@@ -46,7 +46,7 @@ func newHarness(t *testing.T, mode string, bots int) *harness {
 }
 
 func (h *harness) fakeClient() *Client {
-	return &Client{mgr: h.m, send: make(chan frame, 100000), done: make(chan struct{})}
+	return &Client{mgr: h.m, send: make(chan frame, 100000), done: make(chan struct{}), seqGaps: newBucket(seqGapRate, seqGapBurst)}
 }
 
 // join adds a human and processes the join tick.

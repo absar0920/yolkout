@@ -48,6 +48,10 @@ type botBrain struct {
 	tap      bool
 	nextNade int64
 	role     int // nest mode: 0 attacker, 1 defender
+
+	path     []int32 // cached nav path toward pathGoal
+	pathGoal int
+	pathPos  int
 }
 
 func wrapAngle(a float64) float64 {
@@ -147,6 +151,19 @@ func (b *botBrain) onSpawn(r *Room, p *Player) {
 	b.viewYaw, b.viewPitch, b.moveYaw = p.Yaw, 0, p.Yaw
 	b.target, b.hasGoal, b.replanAt = 0, false, 0
 	b.stuckX, b.stuckZ, b.stuckAt = p.PS.X, p.PS.Z, r.k
+	if r.hasNests {
+		// split each team's bots evenly into attackers and defenders (teams can change on rebalance)
+		var n [2]int
+		for _, o := range r.players {
+			if o != p && o.bot != nil && o.Team == p.Team {
+				n[o.bot.role]++
+			}
+		}
+		b.role = 0
+		if n[0] > n[1] {
+			b.role = 1
+		}
+	}
 }
 
 // visible reports line of sight from p's eye to o's body centre.
@@ -256,10 +273,82 @@ func (r *Room) botProbe(w *sim.World, p *Player, yaw float64, jump bool, goal [3
 	return (d0 - d1) + 0.15*moved
 }
 
-func (r *Room) botNavigate(p *Player, b *botBrain, wantYaw float64) {
+// botWaypoint returns the point the bot should head for to reach its goal:
+// the farthest node of the nav-graph path (up to ~6u ahead) that it can see
+// clearly, so bots route through doorways instead of pushing into walls.
+// Falls back to the goal itself when there is no path.
+func (r *Room) botWaypoint(p *Player, b *botBrain) [3]float64 {
+	g := r.nav
+	x, y, z := p.PS.X, p.PS.Y, p.PS.Z
+	t := g.nodeAt(b.goal[0], b.goal[1], b.goal[2])
+	// follow the cached path while the bot is still on it (its furthest node within 1u)
+	at := -1
+	if t == b.pathGoal && len(b.path) > 0 {
+		for j := b.pathPos; j < len(b.path) && j < b.pathPos+24; j++ {
+			nd := &g.nodes[b.path[j]]
+			if math.Abs(nd.h-y) < 0.6 && math.Hypot(nd.x-x, nd.z-z) <= 1 {
+				at = j
+			}
+		}
+	}
+	if at < 0 {
+		b.path = append(b.path[:0], r.navS.findPath(g, g.nodeAt(x, y, z), t)...)
+		b.pathGoal, at = t, 0
+	}
+	b.pathPos = at
+	path := b.path[at:]
+	if len(path) < 2 {
+		b.path = b.path[:0]
+		return b.goal
+	}
+	pick := path[1]
+	for j := 1; j < len(path) && j <= 12; j++ {
+		nd := &g.nodes[path[j]]
+		if j > 1 && !r.navClear(x, y, z, nd.x, nd.h, nd.z) {
+			break
+		}
+		pick = path[j]
+		if nd.h > y+r.C.StepHeight {
+			break // needs a jump: go for this ledge first
+		}
+	}
+	nd := &g.nodes[pick]
+	// keep the steering point at least 3u out so the move probe has something to approach
+	dx, dz := nd.x-x, nd.z-z
+	if d := math.Hypot(dx, dz); d > 1e-6 && d < 3 && pick != path[len(path)-1] && math.Abs(nd.h-y) < 0.3 {
+		dx, dz = dx/d*3, dz/d*3
+	}
+	return [3]float64{x + dx, nd.h, z + dz}
+}
+
+// navClear reports whether a body-wide corridor from a standing point to a
+// node is free at knee and chest height (two rays offset sideways each).
+func (r *Room) navClear(x, y, z, tx, ty, tz float64) bool {
+	dx, dz := tx-x, tz-z
+	d := math.Hypot(dx, dz)
+	if d < 1e-6 {
+		return true
+	}
+	ux, uz := dx/d, dz/d
+	px, pz := -uz*r.C.HalfWidth, ux*r.C.HalfWidth
+	for _, hgt := range [...]float64{0.6, 1.2} {
+		y0, y1 := y+hgt, ty+hgt
+		for _, s := range [...]float64{-1, 1} {
+			ox, oz := x+px*s, z+pz*s
+			ex, ey, ez := tx+px*s-ox, y1-y0, tz+pz*s-oz
+			L := math.Sqrt(ex*ex + ey*ey + ez*ez)
+			if sim.RaycastWorld(r.World, ox, y0, oz, ex/L, ey/L, ez/L, L) >= 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (r *Room) botNavigate(p *Player, b *botBrain, wantYaw float64, steer [3]float64) {
 	offs := [...]float64{0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4, math.Pi}
 	best, bestYaw, bestJump := math.Inf(-1), wantYaw, false
-	goal := b.goal
+	goal := steer
 	if b.target != 0 {
 		// in combat: score candidates by how well they keep us moving safely
 		goal = [3]float64{p.PS.X - math.Sin(wantYaw)*10, p.PS.Y, p.PS.Z - math.Cos(wantYaw)*10}
@@ -365,9 +454,11 @@ func (r *Room) botThink(p *Player) {
 	}
 	if r.k >= b.replanAt {
 		b.replanAt = r.k + 10 + int64(r.rng.IntN(6))
-		want := yawTo(p.PS.X, p.PS.Z, b.goal[0], b.goal[1])
-		want = yawTo(p.PS.X, p.PS.Z, b.goal[0], b.goal[2])
-		if tgt != nil && !(r.hasNests && p.Carrying != 0) {
+		steer := r.botWaypoint(p, b)
+		want := yawTo(p.PS.X, p.PS.Z, steer[0], steer[2])
+		// carriers run home; attackers keep pushing the objective (shooting on the move) unless the fight is close
+		pushing := r.hasNests && (p.Carrying != 0 || (b.role == 0 && dist > 10))
+		if tgt != nil && !pushing {
 			toT := yawTo(p.PS.X, p.PS.Z, tgt.PS.X, tgt.PS.Z)
 			pref := 12.0
 			if w.FireMode == "semi" && w.Pellets > 1 {
@@ -388,7 +479,7 @@ func (r *Room) botThink(p *Player) {
 				want = wrapAngle(toT + b.strafe)
 			}
 		}
-		r.botNavigate(p, b, want)
+		r.botNavigate(p, b, want, steer)
 	}
 	// stuck detection
 	if r.k-b.stuckAt >= 30 {

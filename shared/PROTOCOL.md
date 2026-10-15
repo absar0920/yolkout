@@ -60,7 +60,7 @@ One HTTP server (the Go binary) serves everything on one port (default `:8080`).
 | `GET /data/...` | files from `shared/data/` (rules, weapons, modes, cosmetics, maps) |
 | `GET /ref/...` | files from `shared/ref/` (`sim.mjs`, the shared deterministic sim) |
 | `GET /healthz` | `200 ok` |
-| `GET /api/rooms` | `{"rooms":[{"code":"K7Q2M","mode":"ffa","map":"barnyard","n":5,"max":12}]}`: **public** rooms only |
+| `GET /api/rooms` | `{"rooms":[{"code":"K7Q2MX","mode":"ffa","map":"barnyard","n":5,"max":12}]}`: **public** rooms only |
 | `GET /ws` | WebSocket upgrade (game protocol) |
 
 Static serving requirements (for speed): `.mjs` and `.js` use `Content-Type: text/javascript`. Gzip text
@@ -99,7 +99,7 @@ browsers negotiate it automatically. It is transparent to message handling.
 ```
 client                                   server
   | -- WS connect /ws ----------------------> |
-  | -- {"t":"hello",...} -------------------> |   (must arrive within 10 s)
+  | -- {"t":"hello",...} -------------------> |   (must arrive within 3 s)
   | <------------- {"t":"welcome",...} ------ |   or {"t":"err",...} followed by close
   | <------------- {"t":"spawn",...} -------- |   (the joining player spawns immediately)
   | <------------- {"t":"s",...} (30 Hz) ---- |
@@ -133,7 +133,7 @@ Closing the socket means leaving the room. No explicit leave message exists.
 
 ```json
 {"t":"welcome","v":1,"id":7,
- "room":{"code":"K7Q2M","mode":"ffa","map":"barnyard","priv":0,"max":12},
+ "room":{"code":"K7Q2MX","mode":"ffa","map":"barnyard","priv":0,"max":12},
  "tr":60,"se":2,"k":12345,
  "players":[ROSTER, ...],
  "match":{"state":"live","tl":431.5,"ts":[0,0],"limit":25},
@@ -218,7 +218,7 @@ Field notes:
   (`id` returned it, or `id` 0 for an automatic return), `"cap"` (`id` captured the egg of team `tm`).
 * **`end`**: `wt` = winning team (0 in FFA or on a draw), `wp` = winning player in FFA (0 otherwise), `in` = seconds until
   `start`, `next` = next map id. After `start` the client loads the new map. Fresh `spawn` events and snapshots follow.
-* **err codes:** `bad_hello`, `version`, `room_full`, `no_room`, `server_full`, `rate`, `too_big`, `idle`, `bad_msg`, `unavailable`.
+* **err codes:** `bad_hello`, `version`, `room_full`, `no_room`, `server_full`, `rate`, `too_many`, `too_big`, `idle`, `bad_msg`, `unavailable`.
 
 ### 6.1 ROSTER object
 
@@ -500,14 +500,15 @@ rebalanced: while `|n1 - n2| > 1`, move the most recently joined player of the b
 ## 12. Rooms and matchmaking
 
 * Max **12 players** per room (`rules.net.maxPlayersPerRoom`).
-* **Room code:** 5 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Codes are matched case-insensitively and are unique among live rooms.
+* **Room code:** 6 characters (`rules.rooms.codeLength`) from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Codes are matched case-insensitively and are unique among live rooms.
 * **Quickplay** (`room == ""`, `create == 0`): join the **public** room of the requested mode that has the most players but fewer than 12
   (ties: the oldest room). If there is none, create a public room (map = `hello.map` if valid for the mode, else random).
 * **Create private** (`create == 1`): new private room with `mode` and `map`. The creator gets the code in `welcome.room.code`. Private rooms never appear in quickplay or `/api/rooms`.
-* **Join by code:** `room == "K7Q2M"`. Error `no_room` if no such room exists, `room_full` if it has 12 players. The joiner's `mode`/`map` are ignored.
+* **Join by code:** `room == "K7Q2MX"`. Error `no_room` if no such room exists, `room_full` if it has 12 players. The joiner's `mode`/`map` are ignored.
 * **Team assignment on join:** the smaller team. On a tie, the team with the lower score. On a further tie, team 1.
-* Empty public rooms are destroyed immediately. Empty private rooms are destroyed after 60 s.
-* Server-wide: `-maxrooms` flag (default 200). Beyond it, new rooms fail with `server_full`.
+* Empty public rooms are destroyed immediately. Empty private rooms are destroyed after 60 s, or after 5 s if no player ever entered them.
+* Server-wide: `-maxrooms` flag (default 200). Beyond it, new rooms fail with `server_full`. At most half of the rooms may be private
+  (a create beyond that also gets `server_full`), so quickplay always has room.
 
 ## 13. Rate limits, validation, disconnects
 
@@ -519,20 +520,27 @@ rebalanced: while `|n1 - n2| > 1`, move the most recently joined player of the b
 | all messages | token bucket 120/s, burst 120 | `err rate`, close |
 | inputs per `i` batch | 8 | extra entries ignored |
 | input queue | 16 entries | oldest dropped |
-| input **consumption** | token bucket: +1 token per tick, max 6. Each consumed input costs 1. Max 2 inputs consumed per tick (`maxInputsPerTick`). | inputs wait in the queue (anti speed-hack) |
+| input **consumption** | token bucket: +1 token per tick, max 6. Each consumed input costs 1. One input per tick while at most 3 are queued (jitter buffer); max 2 per tick (`maxInputsPerTick`) beyond that. | inputs wait in the queue (anti speed-hack, de-jitter) |
 | `chat` | 1/s, burst 3, at most 120 characters | dropped, `sys` notice |
 | `ld` | 2/s | dropped |
 | `ping` | 2/s | dropped |
-| `hello` | first message, within 10 s, once | `err bad_hello`, close |
-| idle (no inputs) | 120 s | `err idle`, close |
+| `hello` | first message, within 3 s, once | `err bad_hello`, close |
+| idle (no inputs) | 120 s without an accepted input (empty batches do not count) | `err idle`, close |
+| skipped `seq`s | budget of 32, refilled 0.25/s (spread is seeded by `seq`, so seqs cannot be shopped for) | the input is dropped |
 
-**Input starvation:** if a live player has no queued input for `starveTicks = 10` consecutive ticks, the server simulates a
-null input (keys 0, buttons 0, last yaw/pitch/slot) each tick until inputs arrive. This does **not** advance the ack. Reconciliation fixes the client.
+**Input starvation:** if a live player has no queued input for `starveTicks = 10` consecutive ticks, the server runs a
+null **movement** step (`stepMove` with keys 0 and the last yaw, speed multiplier for buttons 0) each tick until inputs arrive.
+The weapon state machine is **not** ticked, so held buttons, bursts and timers continue exactly as the client predicted.
+This does **not** advance the ack. Reconciliation fixes the client's position.
+
+**Per-IP limits (server):** at most `-maxconnsperip` (default 8) live sockets per client IP (HTTP 429 before the upgrade),
+3 private-room creates per minute and 10 unknown-code joins per minute (then `err too_many` until the budget refills).
+Loopback clients are exempt; behind a reverse proxy run with `-trustproxy` so the last `X-Forwarded-For` entry is used.
 
 ### 13.2 Input validation
 
 `keys &= 31`, `buttons &= 31`. yaw and pitch must be finite (otherwise drop the entry and count it as a violation). The pitch is clamped.
-`slot` not in {0,1} keeps the current slot. `rt` not finite is treated as `k`. `seq` must be an integer > last received.
+`slot` not in {0,1} keeps the current slot, and inputs consumed while the player is dead never change it. `rt` not finite is treated as `k`. `seq` must be an integer > last received.
 Unknown message types are ignored. Malformed JSON gives `err bad_msg` and a close.
 
 ### 13.3 Text sanitisation
@@ -558,7 +566,8 @@ Duplicate names are allowed. **Chat:** strip control characters, trim, cut to 12
 ## 15. Server tick order (each 1/60 s, per room)
 
 1. Accept joins and leaves (send `welcome`/`join`/`leave`; spawn the joiners).
-2. For each player in ascending id: refill 1 input token (max 6). Then while the queue is non-empty, tokens >= 1 and fewer than 2 have been consumed this tick:
+2. For each player in ascending id: refill 1 input token (max 6). Then while the queue is non-empty, tokens >= 1 and fewer than the
+   per-tick limit have been consumed this tick (1, or 2 when more than 3 inputs are queued):
    pop an input and set `ack = seq`. If the player is alive and the match is live, run `simulateInput` and resolve its actions in order (9.3 and 9.4),
    ending spawn protection on fire, melee or grenade. Then apply input starvation (13.1).
 3. Step projectiles (9.4) in creation order and resolve explosions.
@@ -620,5 +629,5 @@ These are additive and backwards compatible. Clients must ignore unknown fields.
 * An out-of-range `yaw` is wrapped into (-PI, PI] instead of being dropped. Clients send at most +-3.1415 at the edge, because q4 of PI is 3.1416, which is outside the range.
 * Spawn-protected players get no splash knockback. Launcher shells explode on contact with teammates of the owner but do not damage them.
 * A dropped egg with no floor under it sends only `flag return` (id 0) without a preceding `drop`.
-* Over the `-maxconns` cap the server answers HTTP 503 before the WebSocket upgrade (instead of `err server_full`).
+* Over the `-maxconns` cap the server answers HTTP 503 before the WebSocket upgrade (instead of `err server_full`); over the per-IP cap, HTTP 429.
 * Binary frames get `err bad_msg`. Any first message other than a valid `hello` gets `err bad_hello`.

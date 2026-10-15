@@ -15,7 +15,7 @@
     "idleTimeoutSec": 120,
     "maxMessageBytes": 4096,
     "maxInputsPerBatch": 8,
-    "helloTimeoutSec": 10
+    "helloTimeoutSec": 3
   },
   "player": {
     "halfWidth": 0.35,
@@ -97,7 +97,7 @@
   ],
   "rooms": {
     "codeAlphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
-    "codeLength": 5,
+    "codeLength": 6,
     "intermissionSec": 10
   }
 }

@@ -109,7 +109,7 @@ func TestDecodeHelloAndTruthy(t *testing.T) {
 func TestPushInputsValidation(t *testing.T) {
 	g := loadGame(t)
 	m := NewManager(g, Config{}, nil)
-	c := &Client{mgr: m}
+	c := &Client{mgr: m, seqGaps: newBucket(seqGapRate, seqGapBurst)}
 	ok := c.pushInputs([][]float64{
 		{1, 255, 0.5, 0.1, 255, 0, 10},
 		{1, 1, 0, 0, 0, 0, 10},   // duplicate seq: ignored
@@ -142,5 +142,42 @@ func TestPushInputsValidation(t *testing.T) {
 	c.pushInputs([][]float64{{30, 0, 0, 0, 0, 0, 0}, {31, 0, 0, 0, 0, 0, 0}, {32, 0, 0, 0, 0, 0, 0}, {33, 0, 0, 0, 0, 0, 0}, {34, 0, 0, 0, 0, 0, 0}, {35, 0, 0, 0, 0, 0, 0}, {36, 0, 0, 0, 0, 0, 0}, {37, 0, 0, 0, 0, 0, 0}, {38, 0, 0, 0, 0, 0, 0}}, time.Now())
 	if len(c.inputs) != g.Rules.Net.InputQueueMax || c.inputs[len(c.inputs)-1].Seq != 37 {
 		t.Fatalf("queue len %d last %d", len(c.inputs), c.inputs[len(c.inputs)-1].Seq)
+	}
+}
+
+// A client may not skip input seqs freely (the seq seeds shot spread): skips
+// spend a small budget and inputs beyond it are dropped.
+func TestPushInputsSeqGapBudget(t *testing.T) {
+	g := loadGame(t)
+	m := NewManager(g, Config{}, nil)
+	c := &Client{mgr: m, seqGaps: newBucket(seqGapRate, seqGapBurst)}
+	now := time.Now()
+	c.pushInputs([][]float64{{1, 0, 0, 0, 0, 0, 0}, {10, 0, 0, 0, 0, 0, 0}}, now) // gap 8: within budget
+	if len(c.inputs) != 2 {
+		t.Fatalf("small gap should be accepted, queued %d", len(c.inputs))
+	}
+	seq := 10.0
+	dropped := 0
+	for i := 0; i < 20; i++ { // a seed-shopping client skipping 50 seqs per input
+		seq += 50
+		n := len(c.inputs)
+		c.pushInputs([][]float64{{seq, 0, 0, 0, 0, 0, 0}}, now)
+		if len(c.inputs) == n {
+			dropped++
+		}
+	}
+	if dropped != 20 {
+		t.Fatalf("large skips should be dropped, %d of 20 were", dropped)
+	}
+	c.inputs = c.inputs[:0]
+	c.pushInputs([][]float64{{seq + 1, 0, 0, 0, 0, 0, 0}}, now)
+	if len(c.inputs) != 1 {
+		t.Fatal("consecutive seq after drops must be accepted")
+	}
+	// empty batches do not count as activity
+	c.lastInput = time.Time{}
+	c.pushInputs(nil, now)
+	if !c.lastInput.IsZero() {
+		t.Fatal("empty batch refreshed lastInput")
 	}
 }

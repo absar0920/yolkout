@@ -198,5 +198,7 @@ export class Renderer {
       if (o.material) for (const m of [].concat(o.material)) m.dispose();
     });
     this.renderer.dispose();
+    // release the WebGL context now: browsers cap live contexts (~16) and drop the oldest one
+    this.renderer.forceContextLoss();
   }
 }

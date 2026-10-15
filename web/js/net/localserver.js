@@ -13,6 +13,9 @@ const BOT_NAMES = ["Eggward", "Shelldon", "Yolanda", "Hardboil", "Sunnyside", "S
 
 const F = { ALIVE: 1, GROUND: 2, AIM: 4, RELOAD: 8, PROT: 16, CARRY: 32, FURY: 64, SWITCH: 128, FIRED: 256 };
 
+const JITTER_BUFFER = 3; // inputs of backlog before the room consumes more than one per tick
+const OCT_KEYS = [Sim.KEY.FWD, Sim.KEY.FWD | Sim.KEY.LEFT, Sim.KEY.LEFT, Sim.KEY.BACK | Sim.KEY.LEFT, Sim.KEY.BACK,
+  Sim.KEY.BACK | Sim.KEY.RIGHT, Sim.KEY.RIGHT, Sim.KEY.FWD | Sim.KEY.RIGHT];
 function hypot2(dx, dz) { return Math.sqrt(dx * dx + dz * dz); }
 function rnd(a, b) { return a + Math.random() * (b - a); }
 
@@ -278,7 +281,15 @@ export class LocalServer {
     P.lastDmgK = -1e9; P.furyEnd = 0; P.carry = 0;
     P.protEnd = this.k + Math.round(this.rules.combat.spawnProtection * this.rules.net.tickRate);
     P.starve = 0;
-    if (P.bot) { P.bot.target = 0; P.bot.wp = null; P.bot.react = 0; }
+    if (P.bot) {
+      P.bot.target = 0; P.bot.wp = null; P.bot.react = 0;
+      if (this.mode.objective === "nest") {
+        // split each team's bots evenly into attackers (0) and defenders (1)
+        const n = [0, 0];
+        for (const o of this.players.values()) if (o !== P && o.bot && o.tm === P.tm) n[o.bot.role || 0]++;
+        P.bot.role = n[0] > n[1] ? 1 : 0;
+      }
+    }
     this._emit({ t: "spawn", id: P.id, x: s.pos[0], y: s.pos[1], z: s.pos[2], yaw: s.yaw, cls: P.cls, tm: P.tm });
   }
 
@@ -295,16 +306,20 @@ export class LocalServer {
       }
       P.tokens = Math.min(this.rules.net.inputTokenMax, P.tokens + 1);
       let used = 0;
-      while (P.queue.length && P.tokens >= 1 && used < this.rules.net.maxInputsPerTick) {
+      // de-jitter (as the Go room): one input per tick unless the backlog exceeds the jitter buffer
+      const limit = P.queue.length > JITTER_BUFFER ? this.rules.net.maxInputsPerTick : 1;
+      while (P.queue.length && P.tokens >= 1 && used < limit) {
         const inp = P.queue.shift();
         P.tokens -= 1; used++;
         P.ack = inp.seq;
-        P.yaw = inp.yaw; P.pitch = inp.pitch; P.slot = inp.slot;
+        P.yaw = inp.yaw; P.pitch = inp.pitch;
+        if (P.alive) P.slot = inp.slot; // inputs sent while dead must not change the fresh loadout
         if (P.alive && live) this._run(P, inp);
       }
       if (used) P.starve = 0;
       else if (++P.starve >= this.rules.net.starveTicks && P.alive && live) {
-        this._run(P, { seq: 0, keys: 0, yaw: P.yaw, pitch: P.pitch, buttons: 0, slot: P.slot, rt: this.k });
+        // null input: movement only, the weapon state is left exactly as the client predicted it
+        Sim.stepMove(this.world, this.C, P.ps, 0, P.yaw, Sim.speedMulFor(this.C, P.defs, P.ws, 0));
       }
     }
     // 3. projectiles
@@ -743,6 +758,25 @@ export class LocalServer {
 
   // ------------------------------------------------------------------ bots
 
+  /** Nest Raid goal for bot P (as the Go server's botChooseGoal), or null to fight/wander. */
+  _botObjective(P) {
+    if (this.mode.objective !== "nest") return null;
+    const own = this.eggs[P.tm], enemy = this.eggs[3 - P.tm];
+    if (!own || !enemy) return null;
+    const b = P.bot;
+    if (P.carry) return own.home;
+    if (own.st !== 0) return [own.x, own.y, own.z];
+    if (b.role === 0 && enemy.st !== 1) return [enemy.x, enemy.y, enemy.z];
+    if (b.role === 1) {
+      // defenders patrol around their own nest
+      if (!b.patrol || hypot2(b.patrol[0] - P.ps.x, b.patrol[2] - P.ps.z) < 1.5 || b.stuck > 90) {
+        b.patrol = [own.home[0] + rnd(-4, 4), own.home[1], own.home[2] + rnd(-4, 4)];
+      }
+      return b.patrol;
+    }
+    return null;
+  }
+
   _botInput(P) {
     const b = P.bot, C = this.C, dt = C.dt;
     b.seq++;
@@ -767,6 +801,9 @@ export class LocalServer {
     let keys = 0, buttons = 0;
     let wantYaw = P.yaw, wantPitch = 0;
     const w = P.defs.w[P.ws.slot];
+    const goal = this._botObjective(P);
+    // carriers run home and attackers keep pushing the objective, shooting on the move, unless the fight is close
+    const pushing = goal && T && T.alive && (P.carry || (b.role === 0 && hypot2(T.ps.x - P.ps.x, T.ps.z - P.ps.z) > 10));
     if (T && T.alive) {
       const dx = T.ps.x + T.ps.vx * 0.1 - P.ps.x, dz = T.ps.z + T.ps.vz * 0.1 - P.ps.z;
       const dy = T.ps.y + 0.85 - eyeY;
@@ -779,11 +816,17 @@ export class LocalServer {
       wantYaw = Math.atan2(-dx, -dz) + b.aimErrY;
       wantPitch = Math.atan2(dy, hd) + b.aimErrP;
       if (w.kind === "projectile") wantPitch -= 0.04;
-      // strafe & range keeping
-      if ((b.strafeT -= dt) <= 0) { b.strafeT = rnd(0.4, 1.4); b.strafe = Math.random() < 0.5 ? -1 : 1; }
-      keys |= b.strafe > 0 ? Sim.KEY.RIGHT : Sim.KEY.LEFT;
-      const ideal = w.fireMode === "semi" && w.pellets > 1 ? 6 : w.adsFov < 40 ? 28 : 14;
-      if (hd > ideal + 4) keys |= Sim.KEY.FWD; else if (hd < ideal - 4) keys |= Sim.KEY.BACK;
+      if (pushing) {
+        // move toward the objective relative to where we are looking
+        const mv = Math.atan2(-(goal[0] - P.ps.x), -(goal[2] - P.ps.z));
+        keys |= OCT_KEYS[((Math.round(Sim.normYaw(mv - P.yaw) / (Math.PI / 4)) % 8) + 8) % 8];
+      } else {
+        // strafe & range keeping
+        if ((b.strafeT -= dt) <= 0) { b.strafeT = rnd(0.4, 1.4); b.strafe = Math.random() < 0.5 ? -1 : 1; }
+        keys |= b.strafe > 0 ? Sim.KEY.RIGHT : Sim.KEY.LEFT;
+        const ideal = w.fireMode === "semi" && w.pellets > 1 ? 6 : w.adsFov < 40 ? 28 : 14;
+        if (hd > ideal + 4) keys |= Sim.KEY.FWD; else if (hd < ideal - 4) keys |= Sim.KEY.BACK;
+      }
       const err = Math.abs(Sim.normYaw(wantYaw - P.yaw)) + Math.abs(wantPitch - P.pitch);
       if (b.react > 0) b.react--;
       else if (err < 0.15 + 2 / Math.max(4, hd)) {
@@ -796,8 +839,11 @@ export class LocalServer {
       // switch to pistol when out of primary ammo
       if (P.ws.mag[0] === 0 && P.ws.res[0] === 0) P.slot = 1;
     } else {
-      // wander between spawns and pickups
-      if (!b.wp || hypot2(b.wp[0] - P.ps.x, b.wp[2] - P.ps.z) < 2 || b.stuck > 90) {
+      if (goal) {
+        b.wp = goal;
+        if (b.stuck > 90) b.stuck = 0;
+      } else if (!b.wp || hypot2(b.wp[0] - P.ps.x, b.wp[2] - P.ps.z) < 2 || b.stuck > 90) {
+        // wander between spawns and pickups
         const pts = this.map.pickups.map((p) => p.pos).concat(this.map.spawns.map((s) => s.pos));
         b.wp = pts[Math.floor(Math.random() * pts.length)];
         b.stuck = 0;

@@ -61,6 +61,7 @@ const ERR = {
   room_full: "That room is full.",
   no_room: "No room with that code. Check it and try again.",
   server_full: "The server is full right now. Try again in a moment.",
+  too_many: "Too many attempts. Wait a minute and try again.",
   version: "Your game is out of date. Reload the page.",
   socket: "Can't reach the game server. Try Practice mode to play offline.",
   timeout: "The server took too long to answer.",
@@ -68,26 +69,39 @@ const ERR = {
   bad_hello: "The server rejected the join request.",
 };
 
+app.sessionSeq = 0;
+
 app.play = async function play(opts) {
   if (app.starting) return;
-  const token = ++app.starting;
+  // unique per start (app.starting is reset to 0 by Cancel, so it cannot identify a session)
+  const token = ++app.sessionSeq;
+  app.starting = token;
   sfx.unlock();
   sfx.play("ui_click");
   const label = opts.offline ? "Warming up the practice range..." : opts.roomCode ? `Joining room ${opts.roomCode}...` : opts.createRoom ? "Creating a private room..." : "Finding a match...";
   setLoading(true, label);
   let cancelled = false;
   app.cancelStart = () => { cancelled = true; };
+  // A cancelled start may still be connecting while the next one runs: it must not touch the
+  // screen, #game-root or the shared HUD callbacks once it is no longer the current session.
+  const current = () => !cancelled && app.sessionSeq === token;
+  let host = null;
   try {
     const main = await loadMain();
-    if (cancelled) return;
+    if (!current()) return;
     const root = $("#game-root");
     root.textContent = "";
     root.hidden = false; // renderer measures its container
+    host = document.createElement("div"); // this session's own container
+    host.className = "game-session";
+    root.appendChild(host);
     app.hud.reset();
+    const callbacks = {};
+    for (const [k, f] of Object.entries(app.hud.callbacks)) callbacks[k] = typeof f === "function" ? (...a) => (current() ? f(...a) : undefined) : f;
     const P = app.profile;
     app.session = Object.assign({}, opts);
     const game = await main.startGame({
-      container: root,
+      container: host,
       name: P.name,
       cls: P.cls,
       primaryWeapon: P.cls,
@@ -100,18 +114,23 @@ app.play = async function play(opts) {
       bots: P.practiceBots ?? 5,
       difficulty: P.practiceDifficulty ?? 0.5,
       settings: Object.assign({}, app.settings),
-      callbacks: app.hud.callbacks,
+      callbacks,
     });
-    if (cancelled) { try { game.stop(); } catch { /* ignore */ } root.textContent = ""; showScreen("home"); return; }
+    if (!current()) {
+      try { game.stop(); } catch { /* ignore */ }
+      host.remove();
+      if (app.sessionSeq === token) showScreen("home");
+      return;
+    }
     app.game = game;
     app.hud.attach(game);
     showScreen("game");
     app.hud.start();
   } catch (e) {
     console.error(e);
-    $("#game-root").textContent = "";
-    showScreen("home");
-    if (!cancelled) {
+    if (host) host.remove();
+    if (app.sessionSeq === token) showScreen("home");
+    if (current()) {
       toast(ERR[e && e.code] || (e && e.message) || "Could not start the game.", "error", 5200);
       sfx.play("empty");
     }

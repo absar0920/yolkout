@@ -188,14 +188,15 @@ export class Game {
     this.loading = false;
     const q = this.queue;
     this.queue = [];
-    for (const m of q) {
-      this._handle(m);
-      if (this.loading) { this.queue.push(...q.slice(q.indexOf(m) + 1)); return; }
+    for (let i = 0; i < q.length; i++) {
+      this._handle(q[i].m, q[i].at);
+      if (this.loading) { this.queue.push(...q.slice(i + 1)); return; }
     }
   }
 
   _onMsg(m) {
-    if (this.loading) { this.queue.push(m); return; }
+    // remember the real arrival time: the tick clock must not see the drain time of a queued snapshot
+    if (this.loading) { this.queue.push({ m, at: performance.now() }); return; }
     this._handle(m);
   }
 
@@ -310,10 +311,10 @@ export class Game {
 
   // ---------------------------------------------------------------- messages
 
-  _handle(m) {
+  _handle(m, at) {
     const now = performance.now();
     switch (m.t) {
-      case "s": return this._onSnapshot(m, now);
+      case "s": return this._onSnapshot(m, now, at);
       case "join":
         this._rosterSet(m.p);
         this._cb("onChat", { system: true, text: `${m.p.n} joined`, id: 0 });
@@ -375,8 +376,8 @@ export class Game {
     }
   }
 
-  _onSnapshot(m, now) {
-    this.clock.sample(m.k, now);
+  _onSnapshot(m, now, at) {
+    this.clock.sample(m.k, at === undefined ? now : at);
     this.snaps.push(m);
     this.lastSnapK = m.k;
     if (typeof m.pk === "string") this.pk = m.pk;
@@ -535,6 +536,7 @@ export class Game {
       this.respawnAt = now + (m.rs || 3) * 1000;
       this._startDeathCam(px ?? 0, py ?? 0, pz ?? 0, this.killer);
       this.input.clearHeld();
+      this.input.slot = 0;
     }
     this._cb("onKillfeed", {
       killer: this._who(m.k), victim: this._who(m.v), weapon: m.w, weaponName: this._weaponName(m.w), headshot: !!m.hs,
