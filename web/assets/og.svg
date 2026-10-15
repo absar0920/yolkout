@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="og-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5db8ff"/><stop offset="1" stop-color="#bfe6ff"/></linearGradient>
+    <radialGradient id="og-sun" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ffe9a3"/><stop offset="0.6" stop-color="#ffc23d"/><stop offset="1" stop-color="#ffc23d" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#og-sky)"/>
+  <circle cx="980" cy="150" r="190" fill="url(#og-sun)"/>
+  <g transform="translate(180 120) scale(1.2)" fill="#ffffff" opacity="0.9"><ellipse cx="0" cy="0" rx="60" ry="26"/><ellipse cx="-40" cy="8" rx="40" ry="20"/><ellipse cx="44" cy="10" rx="44" ry="20"/><ellipse cx="10" cy="-18" rx="36" ry="26"/></g><g transform="translate(1040 470) scale(0.9)" fill="#ffffff" opacity="0.9"><ellipse cx="0" cy="0" rx="60" ry="26"/><ellipse cx="-40" cy="8" rx="40" ry="20"/><ellipse cx="44" cy="10" rx="44" ry="20"/><ellipse cx="10" cy="-18" rx="36" ry="26"/></g><g transform="translate(620 90) scale(0.7)" fill="#ffffff" opacity="0.9"><ellipse cx="0" cy="0" rx="60" ry="26"/><ellipse cx="-40" cy="8" rx="40" ry="20"/><ellipse cx="44" cy="10" rx="44" ry="20"/><ellipse cx="10" cy="-18" rx="36" ry="26"/></g>
+  <path d="M0 520Q300 470 600 515T1200 505V630H0Z" fill="#7fcf6a"/>
+  <path d="M0 560Q320 520 640 560T1200 550V630H0Z" fill="#5fb24e"/>
+  <svg x="100" y="170" width="1000" height="268" viewBox="0 0 560 150">
+  
+  <defs>
+    <linearGradient id="yo-shell" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf6"/>
+      <stop offset="1" stop-color="#efdcbb"/>
+    </linearGradient>
+    <radialGradient id="yo-yolk" cx="0.4" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#ffe27a"/>
+      <stop offset="1" stop-color="#ffa412"/>
+    </radialGradient>
+    <linearGradient id="yo-visor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a8e0ff"/>
+      <stop offset="1" stop-color="#2f86e0"/>
+    </linearGradient>
+    <linearGradient id="yo-gy" gradientUnits="userSpaceOnUse" x1="0" y1="44" x2="0" y2="108">
+      <stop offset="0" stop-color="#ffe17a"/>
+      <stop offset="1" stop-color="#ffab17"/>
+    </linearGradient>
+    <linearGradient id="yo-gc" gradientUnits="userSpaceOnUse" x1="0" y1="44" x2="0" y2="108">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f0dfc0"/>
+    </linearGradient>
+    <path id="yo-egg" d="M60 22C88 22 104 62 104 88C104 115 84 134 60 134C36 134 16 115 16 88C16 62 32 22 60 22Z"/>
+    <clipPath id="yo-in"><use href="#yo-egg"/></clipPath>
+    <clipPath id="yo-low"><path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55V150H8Z"/></clipPath>
+    <clipPath id="yo-cap"><path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55V0H8Z"/></clipPath>
+  </defs>
+
+  <!-- ===== egg mark ===== -->
+  <g transform="translate(4 8) scale(0.94)" stroke="#232129" stroke-linejoin="round" stroke-linecap="round">
+    <!-- yolk bubbling out of the crack -->
+    <ellipse cx="62" cy="54" rx="34" ry="17" fill="url(#yo-yolk)" stroke-width="5"/>
+    <!-- lower shell -->
+    <g clip-path="url(#yo-low)">
+      <use href="#yo-egg" fill="url(#yo-shell)" stroke-width="10"/>
+    </g>
+    <path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55" fill="none" stroke-width="5" clip-path="url(#yo-in)"/>
+    <!-- lifted cap -->
+    <g transform="rotate(-13 22 50) translate(3 -11)">
+      <g clip-path="url(#yo-cap)">
+        <use href="#yo-egg" fill="url(#yo-shell)" stroke-width="10"/>
+      </g>
+      <path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55" fill="none" stroke-width="5" clip-path="url(#yo-in)"/>
+      <path d="M44 31Q52 26 60 27" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.9"/>
+    </g>
+    <!-- brows -->
+    <path d="M30 66L50 72M90 66L70 72" fill="none" stroke-width="6"/>
+    <!-- eyes behind visor -->
+    <path d="M36 79L53 83L51 89L37 88Z M84 79L67 83L69 89L83 88Z" fill="#232129" stroke-width="2"/>
+    <path d="M41 83.5h3M79 83.5h-3" stroke="#ffffff" stroke-width="2.5"/>
+    <!-- visor -->
+    <path d="M21 75Q60 66 99 75L97 92Q60 101 23 92Z" fill="url(#yo-visor)" fill-opacity="0.72" stroke-width="5"/>
+    <path d="M30 78Q48 74 62 74" fill="none" stroke="#ffffff" stroke-width="3.5" opacity="0.85"/>
+    <!-- grin -->
+    <path d="M46 110Q60 116 75 107" fill="none" stroke-width="5"/>
+    <!-- shell crack -->
+    <path d="M93 99L87 104L91 109L86 113" fill="none" stroke-width="3.5"/>
+  </g>
+
+  <!-- ===== wordmark (stroke-built letters, no fonts) ===== -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- drop shadow -->
+    <g stroke="#232129" stroke-width="34" transform="translate(5 7)">
+      <path d="M140 52L157 71L174 52M157 71V93"/>
+      <ellipse cx="218" cy="72" rx="18" ry="21"/>
+      <path d="M262 52V93H288"/>
+      <path d="M312 52V93M340 52L314 75M323 68L342 93"/>
+      <ellipse cx="386" cy="72" rx="18" ry="21"/>
+      <path d="M430 52V76A17 17 0 0 0 464 76V52"/>
+      <path d="M488 52H524M506 52V93"/>
+    </g>
+    <!-- outline -->
+    <g stroke="#232129" stroke-width="34">
+      <path d="M140 52L157 71L174 52M157 71V93"/>
+      <ellipse cx="218" cy="72" rx="18" ry="21"/>
+      <path d="M262 52V93H288"/>
+      <path d="M312 52V93M340 52L314 75M323 68L342 93"/>
+      <ellipse cx="386" cy="72" rx="18" ry="21"/>
+      <path d="M430 52V76A17 17 0 0 0 464 76V52"/>
+      <path d="M488 52H524M506 52V93"/>
+    </g>
+    <!-- fills: YOLK in yolk, OUT in shell -->
+    <g stroke="url(#yo-gy)" stroke-width="20">
+      <path d="M140 52L157 71L174 52M157 71V93"/>
+      <ellipse cx="218" cy="72" rx="18" ry="21"/>
+      <path d="M262 52V93H288"/>
+      <path d="M312 52V93M340 52L314 75M323 68L342 93"/>
+    </g>
+    <g stroke="url(#yo-gc)" stroke-width="20">
+      <ellipse cx="386" cy="72" rx="18" ry="21"/>
+      <path d="M430 52V76A17 17 0 0 0 464 76V52"/>
+      <path d="M488 52H524M506 52V93"/>
+    </g>
+    <!-- glints -->
+    <g stroke="#ffffff" stroke-width="4" opacity="0.75">
+      <path d="M140 50L146 57"/>
+      <path d="M206 61Q209 56 214 55"/>
+      <path d="M262 52V60"/>
+      <path d="M312 52V60"/>
+      <path d="M374 61Q377 56 382 55"/>
+      <path d="M430 52V60"/>
+      <path d="M490 50H500"/>
+    </g>
+  </g>
+</svg>
+  <text x="600" y="490" text-anchor="middle" font-family="system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="800" font-size="34" fill="#232129">Free egg-shooter in your browser. No ads, no paywalls.</text>
+</svg>

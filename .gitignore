@@ -11,3 +11,7 @@ node_modules/
 .idea/
 .vscode/
 /server/server
+/scripts/screenshots/
+/scripts/test-results/
+yolkout-stats.json
+yolkout-stats.json.tmp*

@@ -2,25 +2,312 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Yolkout</title>
-  <meta name="description" content="Yolkout: a free, fast egg-shooter you play in the browser.">
-  <meta name="theme-color" content="#2b1d0e">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Yolkout: free egg shooter in your browser</title>
+  <meta name="description" content="Yolkout is a fast, free multiplayer egg shooter that runs in your browser. No downloads, no ads, no paywalls: every weapon, hat and color is unlocked.">
+  <meta name="theme-color" content="#4aa8ff">
+  <meta name="color-scheme" content="light">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Yolkout">
+  <meta property="og:description" content="Free multiplayer egg shooter in your browser. No ads, no paywalls.">
+  <meta property="og:image" content="/assets/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
-  <link rel="preload" href="/vendor/three.module.min.js" as="script" crossorigin>
-  <link rel="preload" href="/vendor/three.core.min.js" as="script" crossorigin>
-  <link rel="stylesheet" href="/css/main.css">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png">
+  <link rel="apple-touch-icon" href="/assets/icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="modulepreload" href="/js/ui/app.js">
   <script type="importmap">
   { "imports": { "three": "/vendor/three.module.min.js", "yolkout/sim": "/ref/sim.mjs" } }
   </script>
 </head>
 <body>
-  <!-- SCAFFOLD STUB: the client builder replaces this with the real menu/HUD markup. -->
-  <main id="menu" class="menu">
-    <img src="/assets/logo.svg" alt="Yolkout" class="logo" width="420" height="120">
-    <p>Client coming soon.</p>
+  <div class="sky" aria-hidden="true">
+    <span class="cloud c1"></span><span class="cloud c2"></span><span class="cloud c3"></span><span class="sun"></span>
+    <span class="hills"></span>
+  </div>
+
+  <!-- ===================================================== HOME -->
+  <main id="home" class="screen home">
+    <header class="home-top">
+      <h1 class="logo-wrap"><img src="/assets/logo.svg" alt="Yolkout" class="logo" width="560" height="150"></h1>
+      <nav class="top-nav" aria-label="Menu">
+        <button type="button" id="open-help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.2a2.6 2.6 0 1 1 3.6 2.4c-.8.4-1.1.9-1.1 1.7v.5M12 17h.01"/></svg><span>How to play</span></button>
+        <button type="button" id="open-leaderboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12h4v8M10 20V6h4v14M15 20v-6h4v6M3 20h18"/></svg><span>Leaderboard</span></button>
+        <button type="button" id="open-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg><span>Settings</span></button>
+        <button type="button" id="open-about"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c4.5 0 7 7 7 11a7 7 0 0 1-14 0c0-4 2.5-11 7-11Z"/></svg><span>About</span></button>
+      </nav>
+    </header>
+
+    <p id="mobile-note" class="mobile-note" hidden>Yolkout plays best on a desktop or laptop with a keyboard and mouse. You can still browse, set up your egg and practice here.</p>
+
+    <div class="home-grid">
+      <section class="card play-card" aria-labelledby="play-h">
+        <h2 id="play-h" class="sr-only">Play</h2>
+        <div class="field name-field">
+          <label for="name-input">Your name</label>
+          <div class="input-row">
+            <input id="name-input" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" autocapitalize="off" enterkeyhint="go">
+            <button type="button" id="name-random" class="icon-btn" title="Random name" aria-label="Random name"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.3"/><circle cx="15.5" cy="15.5" r="1.3"/><circle cx="15.5" cy="8.5" r="1.3"/><circle cx="8.5" cy="15.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg></button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label" id="mode-label">Game mode</span>
+          <div id="mode-picker" class="mode-picker" aria-labelledby="mode-label"></div>
+          <p id="mode-desc" class="mode-desc"></p>
+        </div>
+        <div class="field">
+          <label for="map-select">Map</label>
+          <select id="map-select"></select>
+        </div>
+        <button type="button" id="play-btn" class="btn btn-play">Play</button>
+        <button type="button" id="practice-btn" class="btn btn-secondary">Practice vs bots</button>
+
+        <div class="private">
+          <h3>Private room</h3>
+          <div class="private-row">
+            <button type="button" id="create-btn" class="btn btn-small">Create room</button>
+            <form id="join-form" class="join-form" novalidate>
+              <label for="code-input" class="sr-only">Room code</label>
+              <input id="code-input" type="text" maxlength="5" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" inputmode="text">
+              <button type="submit" id="join-btn" class="btn btn-small">Join</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="card egg-card" aria-labelledby="egg-h">
+        <h2 id="egg-h" class="card-title">Your egg</h2>
+        <div id="home-egg" class="egg-stage"></div>
+        <div id="home-weapon" class="home-weapon"></div>
+        <button type="button" id="loadout-btn" class="btn btn-secondary">Loadout &amp; style</button>
+      </section>
+
+      <section class="card rooms-card" aria-labelledby="rooms-h">
+        <header class="card-head">
+          <h2 id="rooms-h" class="card-title">Live rooms</h2>
+          <button type="button" id="rooms-refresh" class="icon-btn" title="Refresh" aria-label="Refresh room list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></button>
+        </header>
+        <p id="online-count" class="online-count" aria-live="polite"></p>
+        <ul id="rooms-list" class="rooms-list"><li class="rooms-empty">Loading rooms...</li></ul>
+      </section>
+    </div>
+
+    <footer class="home-foot">
+      <span>Free forever. No ads, no tracking, no purchases.</span>
+      <button type="button" id="footer-about" class="link-btn">About &amp; credits</button>
+    </footer>
   </main>
-  <canvas id="game" hidden></canvas>
-  <script type="module" src="/js/main.js"></script>
+
+  <div id="boot-error" class="boot-error" hidden role="alert">
+    <p>Yolkout could not load its game data.</p>
+    <button type="button" id="boot-retry" class="btn btn-play">Try again</button>
+  </div>
+
+  <!-- ===================================================== LOADOUT -->
+  <section id="loadout" class="screen loadout" hidden aria-labelledby="loadout-h">
+    <header class="loadout-head">
+      <button type="button" id="loadout-back" class="btn btn-ghost btn-small" aria-label="Back without saving">&larr; Back</button>
+      <h2 id="loadout-h">Loadout &amp; style</h2>
+      <button type="button" id="loadout-done" class="btn btn-play btn-small">Save</button>
+    </header>
+    <p id="loadout-note" class="loadout-note"></p>
+    <div class="loadout-grid">
+      <div class="lo-col weapons-col">
+        <h3>Primary weapon</h3>
+        <div id="weapon-list" class="weapon-list"></div>
+        <h3 class="kit-h">Always carried</h3>
+        <ul id="kit-list" class="kit-list"></ul>
+      </div>
+      <div class="lo-col preview-col">
+        <div id="preview-stage" class="preview-stage"></div>
+        <p id="preview-caption" class="preview-caption"></p>
+        <div id="weapon-detail" class="weapon-detail"></div>
+      </div>
+      <div class="lo-col style-col">
+        <div class="style-head">
+          <div role="tablist" aria-label="Style" class="tabs">
+            <button type="button" role="tab" id="tab-color" data-tab="color" aria-controls="cos-grid">Shell</button>
+            <button type="button" role="tab" id="tab-hat" data-tab="hat" aria-controls="cos-grid">Hat</button>
+            <button type="button" role="tab" id="tab-stamp" data-tab="stamp" aria-controls="cos-grid">Stamp</button>
+          </div>
+          <button type="button" id="loadout-random" class="icon-btn" title="Surprise me" aria-label="Random style"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h3.5c2 0 3.2 1 4.5 3l2 3.5c1.3 2 2.5 3 4.5 3H21M18 13.5l3 3-3 3M3 17h3.5c1.2 0 2-.4 2.8-1.2M13 8.2c.8-.8 1.8-1.2 3-1.2H21M18 4l3 3-3 3"/></svg></button>
+        </div>
+        <div id="cos-grid" class="cos-grid" role="tabpanel"></div>
+        <p class="hint">Everything is free and unlocked.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== GAME -->
+  <div id="game-root" class="game-root" hidden></div>
+
+  <div id="hud" class="hud" hidden>
+    <div class="hud-tl">
+      <span id="hud-room" class="chip"></span>
+      <span id="hud-net" class="chip net" data-q="good"><i class="dot" aria-hidden="true"></i><span id="hud-ping">-- ms</span></span>
+    </div>
+
+    <div class="hud-top">
+      <div id="hud-timer" class="timer" role="timer" aria-label="Time left">0:00</div>
+      <div id="hud-objective" class="objective"></div>
+    </div>
+
+    <ol id="killfeed" class="killfeed" aria-label="Kill feed"></ol>
+
+    <div id="hud-toasts" class="hud-toasts" aria-live="polite"></div>
+    <div id="hud-callout" class="callout" aria-live="polite"></div>
+
+    <div id="hud-respawn" class="respawn" hidden>
+      <div class="resp-who"><span id="respawn-title">Cracked by</span> <b id="killer-name"></b> <span id="killer-weapon" class="resp-weapon"></span></div>
+      <div class="resp-count"><span id="respawn-label">Respawning in</span> <b id="respawn-count">3</b></div>
+    </div>
+
+    <div id="hud-chips" class="hud-chips">
+      <span id="chip-prot" class="chip chip-prot" hidden>Spawn shield</span>
+      <span id="chip-carry" class="chip chip-carry" hidden>You have the egg! Get it home</span>
+      <span id="chip-fury" class="chip chip-fury" hidden></span>
+      <span id="chip-streak" class="chip chip-streak" hidden></span>
+    </div>
+
+    <div class="hud-bl">
+      <div id="chat" class="chat">
+        <ol id="chat-log" class="chat-log" aria-label="Chat" aria-live="polite"></ol>
+        <form id="chat-form" class="chat-form" hidden>
+          <span id="chat-scope" class="chat-scope">All</span>
+          <label for="chat-input" class="sr-only">Chat message</label>
+          <input id="chat-input" type="text" maxlength="120" autocomplete="off" spellcheck="false" enterkeyhint="send">
+        </form>
+      </div>
+      <div id="vitals" class="vitals">
+        <svg viewBox="0 0 64 82" class="hp-egg" aria-hidden="true">
+          <defs><clipPath id="hp-clip"><path d="M32 6C48 6 58 36 58 52C58 67 46 76 32 76C18 76 6 67 6 52C6 36 16 6 32 6Z"/></clipPath></defs>
+          <path class="hp-bg" d="M32 6C48 6 58 36 58 52C58 67 46 76 32 76C18 76 6 67 6 52C6 36 16 6 32 6Z"/>
+          <rect id="hp-fill" class="hp-fill" x="0" y="6" width="64" height="80" clip-path="url(#hp-clip)"/>
+          <path class="hp-shine" d="M19 24Q23 14 30 12"/>
+          <path class="hp-outline" d="M32 6C48 6 58 36 58 52C58 67 46 76 32 76C18 76 6 67 6 52C6 36 16 6 32 6Z"/>
+          <path id="sh-ring" class="sh-ring" pathLength="100" stroke-dasharray="0 100" transform="translate(32 41) scale(1.12) translate(-32 -41)" d="M32 6C48 6 58 36 58 52C58 67 46 76 32 76C18 76 6 67 6 52C6 36 16 6 32 6Z"/>
+        </svg>
+        <div class="hp-text"><b id="hp-num">100</b><span id="sh-num" class="sh-num"></span><small>health</small></div>
+      </div>
+    </div>
+
+    <div class="hud-br">
+      <div id="weapon-panel" class="weapon-panel">
+        <div class="w-top"><span id="w-icon" class="w-icon"></span><span id="w-name" class="w-name"></span></div>
+        <div class="ammo"><b id="ammo-mag">0</b><span class="ammo-sep">/</span><span id="ammo-res">0</span></div>
+        <div id="reload-bar" class="reload-bar" hidden><i id="reload-fill"></i></div>
+        <div id="ammo-hint" class="ammo-hint"></div>
+        <div class="slots">
+          <span id="slot-0" class="slot"><kbd>1</kbd><span></span></span>
+          <span id="slot-1" class="slot"><kbd>2</kbd><span></span></span>
+          <span id="gren-pips" class="gren-pips" role="img"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="scoreboard" class="scoreboard panel" hidden></div>
+
+    <div id="click-to-play" class="overlay click-to-play" hidden>
+      <button type="button" class="btn btn-play">Click to play</button>
+      <p class="ctp-help"><span><kbd>WASD</kbd> move</span> <span><kbd>Space</kbd> jump</span> <span><kbd>Mouse</kbd> aim and shoot</span> <span><kbd>R</kbd> reload</span> <span><kbd>G</kbd> grenade</span> <span><kbd>F</kbd> melee</span> <span><kbd>Q</kbd> swap</span> <span><kbd>Tab</kbd> scores</span> <span><kbd>Enter</kbd> chat</span> <span><kbd>Esc</kbd> menu</span></p>
+    </div>
+
+    <div id="pause" class="overlay pause" hidden role="dialog" aria-modal="true" aria-labelledby="pause-h">
+      <div class="panel pause-panel">
+        <h2 id="pause-h">Paused</h2>
+        <p id="pause-info" class="pause-info"></p>
+        <div id="pause-code" class="pause-code" hidden>
+          <span>Room code</span> <b id="pause-code-val"></b>
+          <button type="button" id="pause-copy" class="btn btn-small btn-ghost">Copy invite link</button>
+        </div>
+        <button type="button" id="pause-resume" class="btn btn-play">Resume</button>
+        <button type="button" id="pause-loadout" class="btn btn-secondary">Loadout &amp; style</button>
+        <button type="button" id="pause-settings" class="btn btn-secondary">Settings</button>
+        <button type="button" id="pause-help" class="btn btn-secondary">Controls</button>
+        <button type="button" id="pause-leave" class="btn btn-danger">Leave match</button>
+      </div>
+    </div>
+
+    <div id="match-end" class="overlay match-end" hidden>
+      <div class="panel end-panel">
+        <div id="end-body"></div>
+        <button type="button" id="end-leave" class="btn btn-ghost btn-small">Back to menu</button>
+      </div>
+    </div>
+
+    <div id="disconnected" class="overlay disconnected" hidden role="alertdialog" aria-labelledby="disc-h" aria-describedby="disc-msg">
+      <div class="panel disc-panel">
+        <h2 id="disc-h">Disconnected</h2>
+        <p id="disc-msg"></p>
+        <button type="button" id="disc-retry" class="btn btn-play">Reconnect</button>
+        <button type="button" id="disc-menu" class="btn btn-secondary">Back to menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================== LOADING -->
+  <div id="loading" class="loading" hidden role="status" aria-live="polite">
+    <div class="loading-card">
+      <div class="egg-spin" aria-hidden="true"><img src="/assets/mark.svg" alt="" width="84" height="96"></div>
+      <p id="loading-text">Finding a match...</p>
+      <button type="button" id="loading-cancel" class="btn btn-ghost btn-small">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ===================================================== DIALOGS -->
+  <dialog id="dlg-settings" class="dlg" aria-labelledby="settings-h">
+    <header class="dlg-head"><h2 id="settings-h">Settings</h2><button type="button" class="icon-btn" data-close aria-label="Close settings">&times;</button></header>
+    <div id="settings-body" class="dlg-body settings-body"></div>
+  </dialog>
+
+  <dialog id="dlg-help" class="dlg dlg-wide" aria-labelledby="help-h">
+    <header class="dlg-head"><h2 id="help-h">How to play</h2><button type="button" class="icon-btn" data-close aria-label="Close">&times;</button></header>
+    <div id="help-body" class="dlg-body help-body"></div>
+  </dialog>
+
+  <dialog id="dlg-leaderboard" class="dlg dlg-wide" aria-labelledby="lb-h">
+    <header class="dlg-head"><h2 id="lb-h">Leaderboard</h2><button type="button" class="icon-btn" data-close aria-label="Close">&times;</button></header>
+    <div class="dlg-body">
+      <div id="lb-tabs" class="tabs" role="tablist" aria-label="Sort by">
+        <button type="button" role="tab" data-by="score">Score</button>
+        <button type="button" role="tab" data-by="kills">Kills</button>
+        <button type="button" role="tab" data-by="wins">Wins</button>
+        <button type="button" role="tab" data-by="kd">K/D</button>
+        <button type="button" role="tab" data-by="streak">Streak</button>
+        <button type="button" role="tab" data-by="captures">Captures</button>
+      </div>
+      <p id="lb-meta" class="lb-meta"></p>
+      <div id="lb-body" class="lb-body"></div>
+      <p class="hint">Stats are kept per server by display name, so pick a name you like and keep it.</p>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-about" class="dlg" aria-labelledby="about-h">
+    <header class="dlg-head"><h2 id="about-h">About Yolkout</h2><button type="button" class="icon-btn" data-close aria-label="Close">&times;</button></header>
+    <div class="dlg-body about-body">
+      <img src="/assets/mark.svg" alt="" width="96" height="110" class="about-mark">
+      <p><b>Yolkout</b> is a free, fast multiplayer shooter where every player is a well-armed egg. Pick a weapon, pick a hat, and go crack some shells.</p>
+      <ul class="about-list">
+        <li><b>Free, all of it.</b> Every weapon, hat, colour and stamp is unlocked. There are no ads, no purchases and no analytics.</li>
+        <li><b>Your data stays with you.</b> Your name and settings live in your own browser's storage. The server only sees your display name to show it to other players and keep the leaderboard.</li>
+        <li><b>Built light.</b> Plain HTML, CSS and JavaScript in the browser, a single Go server, no build step. Sounds are synthesized live; models and textures are generated in code.</li>
+      </ul>
+      <h3>Credits</h3>
+      <ul class="about-list">
+        <li>Game design, code, art and sound: the Yolkout team.</li>
+        <li>3D rendering: <a href="https://threejs.org" target="_blank" rel="noopener noreferrer">three.js</a> (MIT License).</li>
+        <li>Made with love for fast arcade browser shooters.</li>
+      </ul>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <noscript><p class="noscript">Yolkout needs JavaScript to run.</p></noscript>
+  <script type="module" src="/js/ui/app.js"></script>
 </body>
 </html>

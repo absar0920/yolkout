@@ -1,7 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <path d="M32 3C47 3 57 25 57 39c0 14-11 22-25 22S7 53 7 39C7 25 17 3 32 3Z" fill="#fff6e6" stroke="#2b1d0e" stroke-width="3.5"/>
-  <path d="M12 31l7 4 5-6 6 7 6-6 6 6 5-5 6 3" fill="none" stroke="#2b1d0e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
-  <circle cx="32" cy="45" r="10" fill="#ffb81c" stroke="#2b1d0e" stroke-width="3"/>
-  <path d="M32 31v6M32 53v6M18 45h6M40 45h6" stroke="#2b1d0e" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="32" cy="45" r="2.4" fill="#2b1d0e"/>
+  <defs>
+    <path id="f-egg" d="M60 22C88 22 104 62 104 88C104 115 84 134 60 134C36 134 16 115 16 88C16 62 32 22 60 22Z"/>
+    <clipPath id="f-in"><use href="#f-egg"/></clipPath>
+    <clipPath id="f-low"><path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55V150H8Z"/></clipPath>
+    <clipPath id="f-cap"><path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55V0H8Z"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#4aa8ff"/>
+  <g transform="translate(7 4) scale(0.42)" stroke="#232129" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="62" cy="54" rx="34" ry="17" fill="#ffbf2e" stroke-width="7"/>
+    <g clip-path="url(#f-low)"><use href="#f-egg" fill="#fff6e6" stroke-width="14"/></g>
+    <path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55" fill="none" stroke-width="7" clip-path="url(#f-in)"/>
+    <g transform="rotate(-13 22 50) translate(3 -11)">
+      <g clip-path="url(#f-cap)"><use href="#f-egg" fill="#fff6e6" stroke-width="14"/></g>
+      <path d="M8 55L23 46L34 59L46 44L58 58L70 45L82 57L94 46L112 55" fill="none" stroke-width="7" clip-path="url(#f-in)"/>
+    </g>
+    <path d="M21 75Q60 66 99 75L97 94Q60 103 23 94Z" fill="#2f86e0" stroke-width="7"/>
+    <path d="M30 79Q48 75 62 75" fill="none" stroke="#bfe6ff" stroke-width="5"/>
+    <path d="M46 112Q60 118 75 109" fill="none" stroke-width="7"/>
+  </g>
 </svg>

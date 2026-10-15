@@ -29,6 +29,7 @@ Contents:
 15. Server tick order
 16. Data file formats
 17. Conformance tests
+18. Implementation notes (extensions in the shipped server and client)
 
 ---
 
@@ -72,6 +73,8 @@ Client to server: each frame holds exactly **one JSON object**. Server to client
 JSON object or a JSON array of objects** (the server batches all messages from one tick into one frame);
 clients MUST accept both forms. Every message object has a string type field `"t"`.
 The server rejects any client frame larger than `maxMessageBytes = 4096`.
+The server offers **permessage-deflate** (no context takeover) and compresses frames of 256 bytes or more when the client accepts it;
+browsers negotiate it automatically. It is transparent to message handling.
 
 ## 3. Timing
 
@@ -601,3 +604,21 @@ Duplicate names are allowed. **Chat:** strip control characters, trim, cut to 12
 * `shared/testvectors/math.json`: mulberry32 outputs, shot seeds, `shotDirs`, `rayEgg`, `raycastWorld`, `falloffDamage`.
 * Regenerate with `node scripts/gen-testvectors.mjs`. Check that the JS ref still matches with `--check`. The Go port's `go test` loads these files
   (path relative to the server module: `../shared/testvectors`) and requires `|a-b| <= 1e-9` for floats and exact equality for integers.
+
+## 18. Implementation notes (extensions in the shipped server and client)
+
+These are additive and backwards compatible. Clients must ignore unknown fields.
+
+* **ROSTER** objects for server-controlled bots carry `"bot":1`. Bots fill a room up to `-bots` players (default 4)
+  while at least one human is present, and leave to make room for joining humans.
+* **`/api/rooms`** entries add `humans` (`n` counts bots too).
+* **`/api/stats?by=score|kills|wins|kd|streak|captures&n=25`** returns the leaderboard
+  `{by,online,rooms,tracked,top:[{n,ki,de,hs,sc,wi,mp,bs,ca,t}]}` (keyed by display name, case-insensitive).
+* **`pong`** is sent immediately as its own frame (not batched with the tick) so RTT is accurate.
+* **`ld`**: cosmetic fields left out keep their current values; unknown ids reset to the defaults.
+* A team-only `chat` in FFA is delivered as public chat with `tm:0`. Chat sanitising also strips bidi control characters.
+* An out-of-range `yaw` is wrapped into (-PI, PI] instead of being dropped. Clients send at most +-3.1415 at the edge, because q4 of PI is 3.1416, which is outside the range.
+* Spawn-protected players get no splash knockback. Launcher shells explode on contact with teammates of the owner but do not damage them.
+* A dropped egg with no floor under it sends only `flag return` (id 0) without a preceding `drop`.
+* Over the `-maxconns` cap the server answers HTTP 503 before the WebSocket upgrade (instead of `err server_full`).
+* Binary frames get `err bad_msg`. Any first message other than a valid `hello` gets `err bad_hello`.

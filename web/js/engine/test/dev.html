@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Yolkout client dev harness</title>
+<!-- Dev harness for the game client without the UI layer. /js/engine/test/dev.html?offline=1&mode=ffa&map=barnyard&cls=benedict&bots=5 ; online: drop offline=1 (uses same-origin /ws). -->
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js", "yolkout/sim": "/ref/sim.mjs" } }</script>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden} #c{position:absolute;inset:0} #log{position:absolute;right:0;top:0;color:#fff;font:12px monospace;z-index:9;background:#0008;max-width:40%;white-space:pre}</style>
+</head><body><div id="c"></div><div id="log"></div>
+<script type="module">
+import { startGame } from "/js/main.js";
+const q = new URLSearchParams(location.search);
+const log = (s) => { const l = document.getElementById("log"); l.textContent = (s + "\n" + l.textContent).slice(0, 1500); };
+window.__events = [];
+const cb = {};
+for (const n of ["onHud","onKillfeed","onScoreboard","onChat","onMatchEnd","onDisconnect","onPing","onRoom","onMatchStart","onStreak","onPickup","onFlag","onPauseChange","onHitConfirm","onDamaged","onSpawn"]) cb[n] = (x) => { if (n !== "onHud") { window.__events.push([n, x]); log(n + " " + JSON.stringify(x).slice(0, 120)); } else window.__hud = x; };
+try {
+  window.__g = await startGame({ container: document.getElementById("c"), name: "DevEgg", cls: q.get("cls") || "benedict",
+    cosmetics: { hat: q.get("hat") || "cowboy", color: "speckled", stamp: "star" }, mode: q.get("mode") || "ffa", map: q.get("map") || "",
+    offline: !!q.get("offline"), roomCode: q.get("room") || "", createRoom: !!q.get("create"), bots: +(q.get("bots") ?? 5), settings: { showDebug: true, quality: q.get("q") || "high" }, callbacks: cb });
+  window.__ready = true;
+} catch (e) { window.__err = String(e && e.stack || e); log("ERR " + e); }
+</script></body></html>
