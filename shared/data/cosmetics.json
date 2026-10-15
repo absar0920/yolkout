@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "notes": "Everything is free and unlocked. Hats/stamps are rendered procedurally by the client from 'shape' + colors (no external art). ids are the wire values.",
+  "defaults": { "hat": "none", "color": "classic", "stamp": "none" },
+  "colors": [
+    { "id": "classic",  "name": "Classic White", "shell": "#f4efe4", "speckle": null },
+    { "id": "brown",    "name": "Farm Brown",    "shell": "#c99567", "speckle": null },
+    { "id": "speckled", "name": "Quail Speckle", "shell": "#e8dcc4", "speckle": "#6b5a45" },
+    { "id": "robin",    "name": "Robin Blue",    "shell": "#9fd6e0", "speckle": null },
+    { "id": "mint",     "name": "Mint Shell",    "shell": "#a8e6bf", "speckle": null },
+    { "id": "rose",     "name": "Rose Quartz",   "shell": "#f2b6c6", "speckle": null },
+    { "id": "lavender", "name": "Lavender",      "shell": "#c8b6f0", "speckle": null },
+    { "id": "goldleaf", "name": "Gold Leaf",     "shell": "#f2c94c", "speckle": "#d19a1e" },
+    { "id": "charcoal", "name": "Century Egg",   "shell": "#3b3a3f", "speckle": "#6f6a5a" },
+    { "id": "dino",     "name": "Dino Egg",      "shell": "#7fbf6a", "speckle": "#3f6f35" },
+    { "id": "lava",     "name": "Lava Shell",    "shell": "#e0573b", "speckle": "#ffb03a" },
+    { "id": "frost",    "name": "Frost Shell",   "shell": "#dff4ff", "speckle": "#9ccbe8" }
+  ],
+  "hats": [
+    { "id": "none",       "name": "No Hat",        "shape": "none" },
+    { "id": "chef",       "name": "Chef's Toque",  "shape": "toque",    "colors": ["#ffffff"] },
+    { "id": "cap",        "name": "Ball Cap",      "shape": "cap",      "colors": ["#d64045", "#ffffff"] },
+    { "id": "beanie",     "name": "Cozy Beanie",   "shape": "beanie",   "colors": ["#2e86ab", "#f5f5f5"] },
+    { "id": "tophat",     "name": "Fancy Top Hat", "shape": "tophat",   "colors": ["#1d1d24", "#b8202e"] },
+    { "id": "cowboy",     "name": "Ranch Hat",     "shape": "cowboy",   "colors": ["#8a5a32"] },
+    { "id": "crown",      "name": "Breakfast Crown","shape": "crown",   "colors": ["#f2c94c"] },
+    { "id": "halo",       "name": "Angel Food",    "shape": "halo",     "colors": ["#fff3a6"] },
+    { "id": "propeller",  "name": "Whirly Cap",    "shape": "propeller","colors": ["#ff6b6b", "#ffd93d", "#4d96ff"] },
+    { "id": "viking",     "name": "Shield Maiden", "shape": "viking",   "colors": ["#9aa0a6", "#f1e3c6"] },
+    { "id": "sprout",     "name": "Sprout",        "shape": "sprout",   "colors": ["#6ab04c"] },
+    { "id": "headband",   "name": "Sweatband",     "shape": "headband", "colors": ["#e84393"] },
+    { "id": "pothelmet",  "name": "Saucepan Helm", "shape": "pot",      "colors": ["#b0b7bf", "#2d2d2d"] },
+    { "id": "beret",      "name": "Beret",         "shape": "beret",    "colors": ["#8e1b3a"] }
+  ],
+  "stamps": [
+    { "id": "none",    "name": "Blank",      "glyph": "" },
+    { "id": "star",    "name": "Star",       "glyph": "star",    "color": "#ffcc00" },
+    { "id": "heart",   "name": "Heart",      "glyph": "heart",   "color": "#e63946" },
+    { "id": "bolt",    "name": "Bolt",       "glyph": "bolt",    "color": "#ffd60a" },
+    { "id": "skull",   "name": "Jolly Yolk", "glyph": "skull",   "color": "#222222" },
+    { "id": "flame",   "name": "Flame",      "glyph": "flame",   "color": "#ff7b00" },
+    { "id": "leaf",    "name": "Leaf",       "glyph": "leaf",    "color": "#2a9d8f" },
+    { "id": "target",  "name": "Bullseye",   "glyph": "target",  "color": "#d62828" },
+    { "id": "stripes", "name": "Racing Stripes", "glyph": "stripes", "color": "#1d3557" },
+    { "id": "smile",   "name": "Sunny Smile","glyph": "smile",   "color": "#3a3a3a" },
+    { "id": "number7", "name": "Lucky 7",    "glyph": "seven",   "color": "#2b9348" }
+  ]
+}

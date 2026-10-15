@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "defaultMode": "ffa",
+  "modes": {
+    "ffa": {
+      "name": "Free-For-All", "short": "FFA",
+      "desc": "Every egg for itself. First to the kill limit wins.",
+      "teams": false, "objective": "none",
+      "scoreLimit": 25, "scoreUnit": "kills", "timeLimitSec": 480, "respawnSec": 3,
+      "points": { "kill": 100, "headshotBonus": 25, "streakBonus": 50 },
+      "maps": ["barnyard", "countertop", "hatchery", "diner"]
+    },
+    "teams": {
+      "name": "Team Scramble", "short": "TDM",
+      "desc": "Sunnies vs Speckles. Team kills add to the team score.",
+      "teams": true, "objective": "none",
+      "scoreLimit": 50, "scoreUnit": "teamKills", "timeLimitSec": 600, "respawnSec": 4,
+      "points": { "kill": 100, "headshotBonus": 25, "streakBonus": 50 },
+      "maps": ["barnyard", "countertop", "hatchery", "diner"]
+    },
+    "nest": {
+      "name": "Nest Raid", "short": "RAID",
+      "desc": "Steal the enemy's Golden Egg and bring it home to your nest while your own egg is safe.",
+      "teams": true, "objective": "nest",
+      "scoreLimit": 3, "scoreUnit": "captures", "timeLimitSec": 600, "respawnSec": 5,
+      "points": { "kill": 100, "headshotBonus": 25, "streakBonus": 50, "capture": 300, "return": 50, "carrierKill": 50, "take": 25 },
+      "nest": { "touchRadius": 1.2, "dropReturnSec": 20, "carrierMoveMul": 1.0 },
+      "maps": ["barnyard", "countertop", "hatchery", "diner"]
+    }
+  },
+  "teams": {
+    "1": { "name": "Sunnies", "color": "#ffc23d" },
+    "2": { "name": "Speckles", "color": "#4aa8ff" }
+  }
+}

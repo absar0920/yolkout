@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "notes": "All angles in radians, times in seconds, distances in world units (1 unit ~ 1 m). reserve -1 = infinite. spread = cone half-angle. Damage is per bullet/pellet before falloff and head multiplier.",
+  "primaries": ["benedict", "deviler", "poacher", "piercer", "frittata", "overeasy", "souffle"],
+  "secondary": "coddler",
+  "grenade": "quiche",
+  "melee": "rollingpin",
+  "defaultPrimary": "benedict",
+  "weapons": {
+    "benedict": {
+      "name": "Benedict AR", "class": "Assault Rifle", "slot": 0, "kind": "hitscan",
+      "desc": "Reliable full-auto all-rounder.",
+      "fireMode": "auto", "fireInterval": 0.1, "burstCount": 0, "burstDelay": 0,
+      "damage": 26, "minDamage": 16, "falloffStart": 18, "falloffEnd": 45, "range": 120, "headMul": 1.6, "pellets": 1,
+      "magSize": 30, "reserve": 120, "reloadTime": 1.9, "switchTime": 0.35,
+      "hipSpread": 0.035, "adsSpread": 0.008, "moveSpread": 0.03,
+      "bloomPerShot": 0.006, "bloomMax": 0.03, "bloomRecover": 0.15,
+      "recoil": { "pitch": 0.012, "yaw": 0.004, "recover": 0.25 },
+      "adsFov": 55, "moveMul": 0.95
+    },
+    "deviler": {
+      "name": "Deviler", "class": "Shotgun", "slot": 0, "kind": "hitscan",
+      "desc": "Pump-action pellet spray. Devastating up close.",
+      "fireMode": "semi", "fireInterval": 0.85, "burstCount": 0, "burstDelay": 0,
+      "damage": 11, "minDamage": 3, "falloffStart": 4, "falloffEnd": 14, "range": 30, "headMul": 1.3, "pellets": 10,
+      "magSize": 6, "reserve": 24, "reloadTime": 2.4, "switchTime": 0.35,
+      "hipSpread": 0.1, "adsSpread": 0.075, "moveSpread": 0.0,
+      "bloomPerShot": 0.0, "bloomMax": 0.0, "bloomRecover": 1.0,
+      "recoil": { "pitch": 0.06, "yaw": 0.01, "recover": 0.3 },
+      "adsFov": 65, "moveMul": 1.0
+    },
+    "poacher": {
+      "name": "Poacher", "class": "SMG", "slot": 0, "kind": "hitscan",
+      "desc": "Fast-firing, fast-moving close-range hose.",
+      "fireMode": "auto", "fireInterval": 0.0667, "burstCount": 0, "burstDelay": 0,
+      "damage": 17, "minDamage": 9, "falloffStart": 10, "falloffEnd": 30, "range": 80, "headMul": 1.4, "pellets": 1,
+      "magSize": 35, "reserve": 175, "reloadTime": 1.6, "switchTime": 0.3,
+      "hipSpread": 0.045, "adsSpread": 0.025, "moveSpread": 0.015,
+      "bloomPerShot": 0.004, "bloomMax": 0.03, "bloomRecover": 0.2,
+      "recoil": { "pitch": 0.008, "yaw": 0.006, "recover": 0.3 },
+      "adsFov": 62, "moveMul": 1.08
+    },
+    "piercer": {
+      "name": "Shell Piercer", "class": "Sniper", "slot": 0, "kind": "hitscan",
+      "desc": "Bolt-action long gun. Headshots crack any egg.",
+      "fireMode": "semi", "fireInterval": 1.33, "burstCount": 0, "burstDelay": 0,
+      "damage": 95, "minDamage": 95, "falloffStart": 200, "falloffEnd": 200, "range": 200, "headMul": 2.0, "pellets": 1,
+      "magSize": 4, "reserve": 20, "reloadTime": 2.8, "switchTime": 0.45,
+      "hipSpread": 0.12, "adsSpread": 0.0, "moveSpread": 0.08,
+      "bloomPerShot": 0.0, "bloomMax": 0.0, "bloomRecover": 1.0,
+      "recoil": { "pitch": 0.08, "yaw": 0.0, "recover": 0.2 },
+      "adsFov": 20, "moveMul": 0.88
+    },
+    "frittata": {
+      "name": "Frittata-3", "class": "Burst Rifle", "slot": 0, "kind": "hitscan",
+      "desc": "Three-round burst. Rewards precise follow-ups.",
+      "fireMode": "burst", "fireInterval": 0.07, "burstCount": 3, "burstDelay": 0.31,
+      "damage": 30, "minDamage": 18, "falloffStart": 25, "falloffEnd": 60, "range": 140, "headMul": 1.6, "pellets": 1,
+      "magSize": 24, "reserve": 96, "reloadTime": 2.1, "switchTime": 0.35,
+      "hipSpread": 0.03, "adsSpread": 0.005, "moveSpread": 0.025,
+      "bloomPerShot": 0.003, "bloomMax": 0.012, "bloomRecover": 0.1,
+      "recoil": { "pitch": 0.01, "yaw": 0.003, "recover": 0.3 },
+      "adsFov": 48, "moveMul": 0.95
+    },
+    "overeasy": {
+      "name": "Over Easy", "class": "Marksman", "slot": 0, "kind": "hitscan",
+      "desc": "Semi-auto marksman rifle. Two headshots and they're scrambled.",
+      "fireMode": "semi", "fireInterval": 0.24, "burstCount": 0, "burstDelay": 0,
+      "damage": 48, "minDamage": 34, "falloffStart": 40, "falloffEnd": 90, "range": 160, "headMul": 1.75, "pellets": 1,
+      "magSize": 12, "reserve": 60, "reloadTime": 2.0, "switchTime": 0.4,
+      "hipSpread": 0.05, "adsSpread": 0.002, "moveSpread": 0.03,
+      "bloomPerShot": 0.01, "bloomMax": 0.03, "bloomRecover": 0.12,
+      "recoil": { "pitch": 0.03, "yaw": 0.004, "recover": 0.25 },
+      "adsFov": 35, "moveMul": 0.95
+    },
+    "souffle": {
+      "name": "Souffle Launcher", "class": "Launcher", "slot": 0, "kind": "projectile",
+      "desc": "Lobs rising-yolk shells that burst on impact.",
+      "fireMode": "semi", "fireInterval": 1.0, "burstCount": 0, "burstDelay": 0,
+      "damage": 130, "minDamage": 0, "falloffStart": 0, "falloffEnd": 0, "range": 0, "headMul": 1.0, "pellets": 1,
+      "magSize": 1, "reserve": 6, "reloadTime": 1.8, "switchTime": 0.45,
+      "hipSpread": 0.02, "adsSpread": 0.0, "moveSpread": 0.01,
+      "bloomPerShot": 0.0, "bloomMax": 0.0, "bloomRecover": 1.0,
+      "recoil": { "pitch": 0.05, "yaw": 0.0, "recover": 0.2 },
+      "adsFov": 60, "moveMul": 0.85,
+      "projectile": { "kind": 1, "speed": 30, "gravity": 6, "radius": 0.15, "life": 4.0, "splashRadius": 4.0, "knockback": 9, "fuse": 0, "bounce": 0, "friction": 0 }
+    },
+    "coddler": {
+      "name": "Coddler", "class": "Pistol", "slot": 1, "kind": "hitscan",
+      "desc": "Shared sidearm with endless spare mags.",
+      "fireMode": "semi", "fireInterval": 0.16, "burstCount": 0, "burstDelay": 0,
+      "damage": 30, "minDamage": 18, "falloffStart": 15, "falloffEnd": 40, "range": 100, "headMul": 1.6, "pellets": 1,
+      "magSize": 10, "reserve": -1, "reloadTime": 1.3, "switchTime": 0.25,
+      "hipSpread": 0.03, "adsSpread": 0.01, "moveSpread": 0.015,
+      "bloomPerShot": 0.008, "bloomMax": 0.03, "bloomRecover": 0.15,
+      "recoil": { "pitch": 0.02, "yaw": 0.004, "recover": 0.3 },
+      "adsFov": 60, "moveMul": 1.05
+    },
+    "quiche": {
+      "name": "Quiche Bomb", "class": "Grenade", "kind": "grenade",
+      "desc": "Bouncy timed explosive. Cook up some chaos.",
+      "damage": 120, "startCount": 2, "maxCount": 3, "cooldown": 0.8,
+      "throwSpeed": 16, "throwUp": 3, "inheritVel": 0.5,
+      "projectile": { "kind": 0, "speed": 16, "gravity": 24, "radius": 0.15, "life": 1.8, "splashRadius": 5.0, "knockback": 10, "fuse": 1.8, "bounce": 0.4, "friction": 0.7 }
+    },
+    "rollingpin": {
+      "name": "Rolling Pin", "class": "Melee", "kind": "melee",
+      "desc": "Bonk. Quick swing, short reach.",
+      "damage": 50, "range": 2.0, "inflate": 0.3, "cooldown": 0.65, "headMul": 1.0
+    }
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "net": {
+    "protocolVersion": 1,
+    "tickRate": 60,
+    "snapshotEvery": 2,
+    "interpDelayMs": 100,
+    "maxRewindTicks": 18,
+    "historyTicks": 32,
+    "maxInputsPerTick": 2,
+    "inputQueueMax": 16,
+    "inputTokenMax": 6,
+    "starveTicks": 10,
+    "maxPlayersPerRoom": 12,
+    "idleTimeoutSec": 120,
+    "maxMessageBytes": 4096,
+    "maxInputsPerBatch": 8,
+    "helloTimeoutSec": 10
+  },
+  "player": {
+    "halfWidth": 0.35,
+    "height": 1.5,
+    "eyeHeight": 1.3,
+    "hitCenterY": 0.75,
+    "hitRadii": [
+      0.42,
+      0.75,
+      0.42
+    ],
+    "headshotY": 1.08,
+    "maxPitch": 1.5
+  },
+  "move": {
+    "moveSpeed": 6.0,
+    "groundAccel": 14.0,
+    "airAccel": 2.5,
+    "gravity": 24.0,
+    "jumpVelocity": 8.2,
+    "terminalVelocity": 25.0,
+    "maxHorizontalSpeed": 20.0,
+    "stepHeight": 0.55,
+    "adsMoveMul": 0.65,
+    "eps": 1e-06
+  },
+  "combat": {
+    "maxHp": 100,
+    "maxShield": 50,
+    "regenDelay": 5.0,
+    "regenRate": 20.0,
+    "spawnProtection": 2.0,
+    "selfSplashMul": 0.5,
+    "friendlyFire": false,
+    "movingSpeedThreshold": 1.0,
+    "knockbackUp": 2.0
+  },
+  "pickups": {
+    "radius": 1.0,
+    "types": {
+      "hp": {
+        "name": "Toast Soldier",
+        "amount": 40,
+        "respawn": 20
+      },
+      "shield": {
+        "name": "Hard-Boiled Shell",
+        "amount": 50,
+        "respawn": 30
+      },
+      "ammo": {
+        "name": "Egg Carton",
+        "grenades": 1,
+        "respawn": 15
+      }
+    }
+  },
+  "streaks": [
+    {
+      "at": 3,
+      "id": "refill",
+      "name": "Second Breakfast",
+      "desc": "Primary ammo refilled and +1 grenade"
+    },
+    {
+      "at": 5,
+      "id": "shell",
+      "name": "Hard-Boiled",
+      "desc": "+50 shield instantly"
+    },
+    {
+      "at": 8,
+      "id": "fury",
+      "name": "Hot Sauce",
+      "desc": "x1.5 damage for 15 seconds",
+      "dmgMul": 1.5,
+      "duration": 15
+    }
+  ],
+  "rooms": {
+    "codeAlphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+    "codeLength": 5,
+    "intermissionSec": 10
+  }
+}

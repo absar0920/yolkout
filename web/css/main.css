@@ -1,0 +1,6 @@
+/* SCAFFOLD STUB: client builder owns this file. */
+:root { --ink: #2b1d0e; --yolk: #ffb81c; --shell: #fff6e6; --sky: #8fd3ff; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--sky); color: var(--ink); font: 16px/1.4 system-ui, sans-serif; overflow: hidden; }
+.menu { display: grid; place-items: center; align-content: center; height: 100%; gap: 1rem; text-align: center; padding: 16px; }
+.logo { max-width: min(420px, 90vw); height: auto; }

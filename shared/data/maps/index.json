@@ -1,0 +1,44 @@
+{
+  "maps": [
+    {
+      "id": "barnyard",
+      "name": "Barnyard Brawl",
+      "desc": "A red barn with a hayloft, two chicken coops and a lot of hay to hide behind.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ]
+    },
+    {
+      "id": "countertop",
+      "name": "Countertop",
+      "desc": "Egg-sized warfare on a giant kitchen counter: sink canyon, spoon bridge, pancake tower.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ]
+    },
+    {
+      "id": "hatchery",
+      "name": "The Hatchery",
+      "desc": "An industrial egg plant: incubator rooms, conveyor lanes, a catwalk ring and the central pit.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ]
+    },
+    {
+      "id": "diner",
+      "name": "Sunrise Diner",
+      "desc": "A roadside diner at dawn: booth fights inside, roof duels under the neon sign, cars and trailers outside.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ]
+    }
+  ]
+}

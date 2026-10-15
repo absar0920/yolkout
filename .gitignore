@@ -1,0 +1,13 @@
+/bin/
+/server/yolkout
+*.exe
+*.test
+*.out
+coverage.*
+node_modules/
+.DS_Store
+*.log
+.env
+.idea/
+.vscode/
+/server/server
