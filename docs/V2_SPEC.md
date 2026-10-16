@@ -251,7 +251,7 @@ because B draws the TP hands at the silhouette edges.
 
 **Hitscan damage (server and localserver):** per pellet: `zone = hitZone(C, hit, targetPos, d[0], d[2])`,
 `dmg = falloffDamage(w, t) * zoneMul(w, zone) * attackerDmgMul`. Sum per victim. The applied damage is `max(1, floor(sum + 0.5))`. The event `z` is the min non-zero zone over that victim's pellets.
-**Melee:** compute the zone on the inflated hit point. `dmg = floor(m.damage * zoneMul(m, zone) * dmgMul + 0.5)` (only the head gets `headMul`). `hs = zone == 1`.
+**Melee:** compute the zone on the real egg with `meleeZone(C, eye, dir, victimPos)` (closest point of the aim ray to the egg centre, see PROTOCOL 9.3; the inflated hit point overstated headshots). `dmg = floor(m.damage * zoneMul(m, zone) * dmgMul + 0.5)` (only the head gets `headMul`). `hs = zone == 1`.
 **Splash** (grenade, launcher): `z = 0`, never a headshot. This is unchanged.
 
 ### 3.2 `weapons.json` (complete. Copy it exactly. `notes` updated.)
@@ -601,7 +601,7 @@ class ViewModel {
   setMelee(id)
   setHandColor(css)
   fire({ strength, ads, lastRound })        // per-class kick + part motion + casing + cycle (bolt/pump) scheduling
-  reloadStart({ empty, mag, magSize, reloadTime })   // C's game.js calls it on the local "reload" action
+  reloadStart({ empty, mag, magSize, reserve, reloadTime })   // n shells = min(magSize - mag, reserve)   // C's game.js calls it on the local "reload" action
   reloadCancel()
   meleeStart(id) ; meleeHit(hitKind /* 0 miss | 1 world | 2 egg */)
   throwNade()

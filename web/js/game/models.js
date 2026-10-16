@@ -214,7 +214,7 @@ function makePickup(type) {
   }
   const ringColor = type === "hp" ? "#ff6b5a" : type === "shield" ? "#6cc9ff" : "#9fd36b";
   const ring = mesh(cachedGeo("pring", () => new THREE.RingGeometry(0.32, 0.45, 32)), new THREE.MeshBasicMaterial({
-    color: new THREE.Color(ringColor), transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide,
+    color: new THREE.Color(ringColor), transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true,
   }), 0, 0.03, 0, -Math.PI / 2, 0, 0);
   g.add(ring);
   mergeStatic(inner);
@@ -241,7 +241,7 @@ function makeNest(teamColor) {
   body.add(mesh(ellipsoid(0.05, 0.05, 0.05, 8, 6), tm("#f2c94c"), 0.9, 2.42, 0));
   mergeStatic(body);
   const ring = mesh(cachedGeo("nring", () => new THREE.RingGeometry(1.05, 1.2, 40)), new THREE.MeshBasicMaterial({
-    color: new THREE.Color(teamColor), transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide,
+    color: new THREE.Color(teamColor), transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true,
   }), 0, 0.04, 0, -Math.PI / 2, 0, 0);
   g.add(ring);
   const flag = mesh(roundedBox(0.52, 0.32, 0.02, 0.01, 1), tm(teamColor), 1.17, 2.2, 0);
@@ -284,6 +284,7 @@ const SWING_DUR = 0.35;
 const TP_GUN_SCALE = 1.2; // chunky cartoon read at distance (hands scale with the sockets)
 const _sGun = new THREE.Vector3(TP_GUN_SCALE, TP_GUN_SCALE, TP_GUN_SCALE);
 const NADE_DUR = 0.4;
+const NADE_REL = 0.45; // fraction of NADE_DUR where the TP quiche leaves the hand
 
 const _mA = new THREE.Matrix4(), _mB = new THREE.Matrix4(), _mC = new THREE.Matrix4();
 const _pA = new THREE.Vector3(), _pB = new THREE.Vector3(), _qA = new THREE.Quaternion(), _qB = new THREE.Quaternion(), _sA = new THREE.Vector3(), _sB = new THREE.Vector3();
@@ -401,7 +402,7 @@ export class EggAvatar {
     bones[2].position.set(0.15, 0, -0.12);
     bones[3].position.set(-0.15, 0, -0.12);
     this.root.add(bones[2], bones[3]);
-    this.limbs = new THREE.SkinnedMesh(geo, fxMaterial("#f4efe4"));
+    this.limbs = new THREE.SkinnedMesh(geo, fxMaterial("#f4efe4", 0.35, { tag: "skin" }));
     const I = new THREE.Matrix4();
     this.limbs.bind(new THREE.Skeleton(bones, [I, I.clone(), I.clone(), I.clone()]), I.clone());
     this.limbs.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.8, -0.2), 1.45);
@@ -412,6 +413,19 @@ export class EggAvatar {
     this.holdR = new THREE.Object3D();
     this.holdR.rotation.y = Math.PI;
     bones[0].add(this.holdR);
+    // L hand: the quiche bomb shown during the throw until it leaves the hand (shared cached geometry)
+    this.holdL = new THREE.Object3D();
+    this.holdL.rotation.y = Math.PI;
+    bones[1].add(this.holdL);
+    const nade = artBuildGrenade({ lod: "tp" });
+    nade.sockets.grip.updateMatrix();
+    nade.matrix.copy(nade.sockets.grip.matrix).invert();
+    nade.matrix.decompose(nade.position, nade.quaternion, nade.scale);
+    nade.scale.setScalar(1.3);
+    nade.visible = false;
+    nade.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+    this.holdL.add(nade);
+    this.tpNade = nade;
   }
 
   setCosmetics(cos) {
@@ -427,7 +441,7 @@ export class EggAvatar {
     this.u.uBrowColor.value.set(lum < 0.3 ? "#f4efe4" : "#3b2a20");
     // cracks show the pale inner membrane on dark shells, dark lines on light ones
     this.u.uCrackColor.value.set(lum < 0.3 ? "#efe3cc" : "#3b2616");
-    this.limbs.material = fxMaterial(color.shell);
+    this.limbs.material = fxMaterial(color.shell, 0.35, { tag: "skin" });
     this.hatAnchor.clear();
     this.hat = buildHat(hat);
     this.hatAnchor.add(this.hat);
@@ -472,6 +486,7 @@ export class EggAvatar {
     const w = this.data.weapons && this.data.weapons.weapons ? this.data.weapons.weapons[id] : null;
     this.reloadStyle = (w && w.reloadStyle) || ({ deviler: "shells", piercer: "clip", souffle: "rocket", coddler: "pistol" }[id] || "mag");
     this.anim && (this.anim.reloadT = -1, this.anim.magOff = 0);
+    this.rocketLoaded = true;
   }
 
   /** Choose this avatar's melee (shown during swings). */
@@ -510,7 +525,17 @@ export class EggAvatar {
     return out.setFromMatrixPosition(this.gun.sockets.muzzle.matrixWorld);
   }
 
-  fire() { this.anim.recoil = 1; this.anim.fireT = 0; }
+  fire() {
+    this.anim.recoil = 1; this.anim.fireT = 0;
+    // the launcher's warhead leaves the tube (shown again when a reload seats the next one, or on rearm)
+    if (this.gun && this.gun.parts.rocket) { this.gun.parts.rocket.visible = false; this.rocketLoaded = false; }
+  }
+  /** Fresh spawn: full magazine (the launcher shows its warhead again). */
+  rearm() {
+    this.rocketLoaded = true;
+    const rp = this.gun && this.gun.parts.rocket;
+    if (rp) { rp.visible = true; if (rp.userData.rest) rp.position.copy(rp.userData.rest.position); }
+  }
   /** Start the TP melee swing (id defaults to the avatar's melee). */
   melee(id) {
     if (id) this.setMelee(id);
@@ -602,6 +627,22 @@ export class EggAvatar {
           : rf < 0.65 ? 0.4 - smooth((rf - 0.45) / 0.2) * 0.28 : rf < 0.78 ? 0.12 - smooth((rf - 0.65) / 0.13) * 0.12 : 0;
       }
     }
+    if (g.parts.rocket) {
+      // rocket reload: the next warhead is fetched (hidden), pushed in from the muzzle along travel.rocket, seated at 0.66
+      const rp = g.parts.rocket, rest = rp.userData.rest;
+      if (rf >= 0.66 && this.reloadStyle === "rocket") this.rocketLoaded = true;
+      let off = 0, vis = this.rocketLoaded;
+      if (rf >= 0 && rf < 0.66 && !this.rocketLoaded) {
+        vis = rf >= 0.3;
+        off = vis ? (1 - smooth(clamp01((rf - 0.3) / 0.36))) * (g.travel.rocket ? g.travel.rocket.dist : 0.28) : 0;
+      }
+      rp.visible = vis;
+      if (rest) {
+        const ax = g.travel.rocket ? g.travel.rocket.axis : [0, 0, -1];
+        rp.position.copy(rest.position);
+        if (off) rp.position.addScaledVector(_v1.set(ax[0], ax[1], ax[2]).normalize(), off);
+      }
+    }
     if (g.parts.mag) {
       const m = g.parts.mag, ax = g.travel.mag ? g.travel.mag.axis : [0, -1, 0];
       _v1.set(ax[0], ax[1], ax[2]).normalize();
@@ -643,6 +684,8 @@ export class EggAvatar {
       _qA.setFromEuler(_e1.set(-0.5 - fw * 1.2, 0.3, 0.2));
       _mC.compose(_pA, _qA, _sGun);
     }
+    // quiche in the L hand until the forward release (NADE_REL), then the flying projectile takes over
+    if (this.tpNade) this.tpNade.visible = a.nadeT >= 0 && !(reloadL > 0) && a.nadeT / NADE_DUR < NADE_REL;
     a.wL += (wL - a.wL) * Math.min(1, dt * 18);
     if (wL > 0) this._lastL.copy(_mC);
     this._blendBone(this.bones[1], _mB, this._lastL, a.wL);

@@ -294,6 +294,25 @@ export function hitZone(C, hx, hy, hz, px, py, pz, dx, dz) {
   return ZONE.BODY;
 }
 
+/**
+ * Zone of a melee hit (PROTOCOL.md 9.3). Melee finds its victim with rayEgg(..., inflate), but the zone is taken on the
+ * REAL egg: the point of the aim ray (origin o, unit dir d) closest to the egg centre in the egg's own (uninflated)
+ * ellipsoid metric, s = max(0, -(q.e)/(e.e)) with q = (o-c)/r, e = d/r, pulled onto the real surface when it lies
+ * outside (normalised length > 1). So a point-blank swing at the feet is a leg/body hit and only a swing aimed at the top cap is a head hit.
+ */
+export function meleeZone(C, ox, oy, oz, dx, dy, dz, px, py, pz) {
+  const rx = C.hitRadii[0], ry = C.hitRadii[1], rz = C.hitRadii[2];
+  const qx = (ox - px) / rx, qy = (oy - (py + C.hitCenterY)) / ry, qz = (oz - pz) / rz;
+  const ex = dx / rx, ey = dy / ry, ez = dz / rz;
+  const ee = ex * ex + ey * ey + ez * ez;
+  let s = ee > 0 ? -(qx * ex + qy * ey + qz * ez) / ee : 0;
+  if (s < 0) s = 0;
+  let nx = qx + ex * s, ny = qy + ey * s, nz = qz + ez * s;
+  const l = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (l > 1) { nx /= l; ny /= l; nz /= l; }
+  return hitZone(C, px + nx * rx, py + C.hitCenterY + ny * ry, pz + nz * rz, px, py, pz, dx, dz);
+}
+
 /** Damage multiplier of a zone for weapon def w (melee has no `zones`: head bonus only). */
 export function zoneMul(w, zone) {
   const z = w.zones;

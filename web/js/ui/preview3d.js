@@ -10,7 +10,8 @@ async function loadMods() {
       import("../../vendor/three.module.min.js"),
       import("../game/models.js"),
       import("../main.js"),
-    ]).then(([THREE, models, main]) => ({ THREE, models, main }));
+      import("../engine/gputrack.js"),
+    ]).then(([THREE, models, main, gputrack]) => ({ THREE, models, main, gputrack }));
   }
   return mods;
 }
@@ -30,7 +31,12 @@ function webglOK() {
   return glOK;
 }
 
+const tracks = new WeakMap();
+
 function releaseRenderer(renderer) {
+  // drop this renderer's 'dispose' listeners on the module-cached art (else every closed preview stays reachable)
+  const tr = tracks.get(renderer);
+  if (tr) tr.release();
   renderer.dispose();
   renderer.forceContextLoss();
 }
@@ -56,6 +62,7 @@ export async function mountPreview3D(host, cos, cls, mel) {
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
   } catch { return null; }
+  tracks.set(renderer, M.gputrack.trackRenderer(renderer));
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const canvas = renderer.domElement;
   canvas.className = "preview3d";

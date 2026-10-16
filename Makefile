@@ -21,7 +21,7 @@ define with_server
 	$(1)
 endef
 
-.PHONY: help run build test test-go test-js check-js bench bots bots-wander e2e art-shots fp-shots deps fmt vet maps validate vectors docker clean
+.PHONY: help run build test test-go test-js check-js bench bots bots-wander e2e art-shots fp-shots v2-shots deps fmt vet maps validate vectors docker clean
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -65,6 +65,9 @@ e2e: build ## browser end-to-end test (headless Chromium) against a fresh server
 
 art-shots: ## render the art gallery (models, hands, cracks) to scripts/screenshots/art/ and check model budgets
 	node scripts/art-gallery.mjs
+
+v2-shots: ## final v2 screenshot set (every FP weapon, scopes, pan swing, cracked eggs, in-match) to scripts/screenshots/v2/
+	node scripts/v2-shots.mjs
 
 fp-shots: ## render first-person view-model, scope, crack and wall-tracer shots to scripts/screenshots/fp/
 	node scripts/fp-shots.mjs

@@ -108,12 +108,13 @@ function shellReload(o) {
   // roll the loading gate (under the receiver) toward the camera
   const P = TUNE.shellP || [-0.07, 0.085, 0.0], R = TUNE.shellR || [16 * D, 14 * D, c];
   const gun = [rest(0), [0.1, P, R]];
-  const t0 = 0.1, span = 0.76 / n;
+  // fixed per-shell tempo (the sim reload always lasts reloadTime): a short top-up waits on the raised gun first
+  const span = Math.min(0.76 / n, 0.16), t0 = 0.86 - n * span;
   const PORT_OUT = { s: "loadPort", o: [0, 0, 0.075], r: [0, 0, 0] };
   const PORT_IN = { s: "loadPort", o: [0, 0, -0.035], r: [0, 0, 0] };
   const OFFP = { g: [OFF[0] + 0.04, OFF[1] + 0.05, OFF[2] - 0.1], r: [0.6, 0.3, 0] };
   const keys = [[0, OFFP]], vis = [[0, false]], ev = [];
-  const L = [[0, "lg"], [t0, "lg"]];
+  const L = [[0, "lg"], [Math.max(0.1, t0 - 0.12), "lg"], [t0 + 0.1 * span, { g: OFFP.g, r: OFFP.r, pose: "pinch" }]];
   for (let i = 0; i < n; i++) {
     const a = t0 + i * span, u = (x) => a + x * span;
     keys.push([u(0.12), OFFP], [u(0.35), PORT_OUT, "out"], [u(0.72), PORT_IN, "in"], [u(0.82), PORT_IN]);
@@ -273,20 +274,20 @@ export function meleeTimeline(swing, w = 0.1, cd = 0.65) {
   w = Math.max(0.03, w);
   cd = Math.max(w + 0.3, cd);
   const V = (k, pose = "fist") => Object.assign({ pose }, S[k]);
-  const ws = Math.min(0.07, w * 0.6);
-  const R = [
-    [0, "rg"],
-    [ws, V("rest"), "out"],
-    [Math.max(ws + 0.01, w - 0.035), V("wind"), "s"],
-    [Math.max(ws + 0.02, w - 0.01), V("wind2"), "in"],
-    [w + 0.05, V("strike"), "in"],
-    [w + 0.25, V("follow"), "out"],
-    [Math.max(w + 0.3, cd - 0.13), V("low"), "s"],
+  const ws = Math.min(0.07, w * 0.5);
+  // contact pose ON the hit: the sim's meleeHit, the vm.meleeHit recoil and the 'strike' event all fire at w.
+  // A windup too short for a cock-back (whisk, spatula) strikes straight from the ready pose.
+  const R = [[0, "rg"], [ws, V("rest"), "out"]];
+  if (w - ws >= 0.05) R.push([Math.max(ws + 0.01, w - 0.06), V("wind"), "s"], [w - 0.04, V("wind2"), "in"]);
+  R.push(
+    [w, V("strike"), "in"],
+    [w + 0.2, V("follow"), "out"],
+    [Math.max(w + 0.28, cd - 0.13), V("low"), "s"],
     [cd, "rg", "s"],
-  ];
+  );
   const down = [0.02, -0.25, 0.02], roll = [-0.15, 0.1, -0.4];
   const gun = [rest(0), [0.08, down, roll, "out"], [Math.max(0.09, cd - 0.15), down, roll], rest(cd, "back")];
-  if (swing === "overhead") gun.splice(2, 0, [w + 0.05, [0.02, -0.28, 0.02], [-0.2, 0.1, -0.45], "in"]);
+  if (swing === "overhead") gun.splice(2, 0, [w, [0.02, -0.28, 0.02], [-0.2, 0.1, -0.45], "in"]);
   const ev = [[w, "strike", ""]];
   return {
     name: "melee", unit: "s", end: cd, strikeAt: w,
@@ -298,23 +299,26 @@ export function meleeTimeline(swing, w = 0.1, cd = 0.65) {
 // ----------------------------------------------------------------- grenade (0.6 s, normalised)
 
 export function grenadeTimeline() {
-  const T = 0.6, s = (x) => x / T;
+  // The sim throws on the key press and the predicted quiche appears 0.08 s later (game.js _predictProjectile
+  // showAt), so the whole throw happens up front: a short cock back, the forward release at 0.075 s (the in-hand
+  // quiche hides on the same frame the flying one shows), then a long follow-through and recovery.
+  const T = 0.6, s = (x) => x / T, REL = s(0.075);
   const v = (p, r, pose = "grip") => ({ v: p, r, pose });
   const L = [
     [0, "lg"],
-    [s(0.06), v([-0.22, -0.28, -0.42], [0.3, -0.4, -0.6])],
-    [s(0.1), v([-0.24, -0.1, -0.36], [0.9, -0.6, -0.9]), "out"],
-    [s(0.13), v([-0.2, -0.07, -0.42], [0.7, -0.5, -0.9]), "in"],
-    [s(0.3), v([-0.02, -0.14, -0.74], [-0.3, -0.2, -0.7], "open"), "out"],
-    [s(0.45), v([-0.22, -0.5, -0.4], [0.2, -0.3, -0.5], "open")],
+    [s(0.035), v([-0.23, -0.1, -0.33], [0.9, -0.6, -0.9]), "out"],
+    [REL, v([-0.08, -0.11, -0.6], [-0.2, -0.25, -0.75], "open"), "s"],
+    [s(0.16), v([-0.02, -0.2, -0.72], [-0.45, -0.2, -0.7], "open"), "out"],
+    [s(0.34), v([-0.2, -0.52, -0.42], [0.2, -0.3, -0.5], "open")],
     [1, "lg"],
   ];
   return {
     name: "grenade", dur: T,
-    gun: [rest(0), [s(0.1), [0.01, -0.02, 0.01], [-2 * D, 0, -3 * D]], [s(0.45), [0.01, -0.02, 0.01], [-2 * D, 0, -3 * D]], rest(1, "back")],
+    gun: [rest(0), [s(0.04), [0.012, -0.02, 0.012], [-2 * D, 0, -3 * D], "out"], [s(0.09), [0.004, -0.03, -0.004], [-4 * D, 0, -2 * D], "in"],
+      [s(0.34), [0.01, -0.02, 0.01], [-2 * D, 0, -3 * D]], rest(1, "back")],
     L, R: [[0, "rg"], [1, "rg"]], parts: {},
-    show: { nade: [[0, true], [s(0.13), false]] },
-    ev: [[s(0.13), "release", ""]],
+    show: { nade: [[0, true], [REL, false]] },
+    ev: [[REL, "release", ""]],
   };
 }
 

@@ -3,9 +3,11 @@
 // (sniper / marksman / rocket launcher), health-based shell cracks, low-health vignette,
 // spawn-protection tint and the optional debug panel.
 // Health/ammo/killfeed/scoreboard/chat are left to the UI (callbacks).
-// Crack layers are pre-rendered to offscreen canvases on resize, so draw() only blits them.
+// Crack layers are pre-rendered (lazily, per stage, cropped and downscaled) to offscreen canvases, so draw() only blits them.
 
 const TAU = Math.PI * 2;
+// crack layers are hairline corner art: pre-render them at a fraction of the overlay resolution
+const LAYER_SCALE = 0.6, LAYER_MAX_W = 1280;
 
 function mulberry(seed) {
   let a = seed >>> 0;
@@ -71,16 +73,19 @@ export class Overlay {
     this.bursts = []; // {t, ax, az}
     this.flashRed = 0;
     this.w = 0; this.h = 0;
-    this.layers = null; this.layerKey = "";
+    this.layers = null; this.layerKey = ""; this.layerSize = [1, 1]; this.layerPendKey = ""; this.layerPendT = 0;
     this.crackA = [0, 0, 0];
     this.scopeT = 0; this.scopeOn = false;
     this.time = 0;
     this.resize();
   }
 
+  /** Cap the overlay's pixel ratio at the 3D renderer's (quality-aware) one, so low quality stays at 1. */
+  setPixelRatioCap(pr) { this.prCap = Math.max(1, pr || 1); }
+
   resize() {
     const r = this.c.getBoundingClientRect();
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    const pr = Math.min(window.devicePixelRatio || 1, 2, this.prCap || 2);
     const w = Math.max(1, Math.round(r.width * pr)), h = Math.max(1, Math.round(r.height * pr));
     if (w !== this.c.width || h !== this.c.height) { this.c.width = w; this.c.height = h; }
     this.pr = pr; this.w = w; this.h = h;
@@ -102,38 +107,62 @@ export class Overlay {
   /** Crack stage for an hp fraction (same thresholds as EggAvatar.crackStage). */
   static crackStage(f) { return f >= 0.75 ? 0 : f >= 0.5 ? 1 : f >= 0.25 ? 2 : 3; }
 
-  _buildLayers() {
-    const W = this.w, H = this.h, pr = this.pr;
+  /**
+   * Crack layer for stage i (0..2), built on first use: each crack group is pre-rendered into its own canvas cropped
+   * to the group's bounding box, at LAYER_SCALE of the overlay resolution (capped at LAYER_MAX_W px wide), and blitted
+   * scaled. A size change keeps drawing the old layers (stretched) and rebuilds once the size settled (debounced).
+   */
+  _layer(i) {
+    const W = this.w, H = this.h;
     const key = `${W}x${H}`;
-    if (this.layerKey === key && this.layers) return;
-    this.layerKey = key;
-    const m = Math.min(W, H);
-    const rng = mulberry(0x5eed);
+    if (this.layerKey !== key) {
+      if (!this.layers || !this.layers.some(Boolean)) { this.layers = [null, null, null]; this.layerKey = key; this.layerSize = [W, H]; }
+      else if (this.layerPendKey !== key) { this.layerPendKey = key; this.layerPendT = this.time; }
+      else if (this.time - this.layerPendT > 0.25) { this.layers = [null, null, null]; this.layerKey = key; this.layerSize = [W, H]; this.layerPendKey = ""; }
+    }
+    if (!this.layers[i]) this.layers[i] = this._buildLayer(i, this.layerSize[0], this.layerSize[1]);
+    return this.layers[i];
+  }
+
+  _buildLayer(i, W, H) {
+    const pr = this.pr, m = Math.min(W, H);
+    const rng = mulberry(0x5eed + i * 7919);
     const corner = (x, y, base, n, len) => {
       const lines = [];
-      for (let i = 0; i < n; i++) crackLines(rng, x, y, base + (i / Math.max(1, n - 1) - 0.5) * 1.0 + (rng() - 0.5) * 0.2, len * (0.7 + rng() * 0.5), 10, 2, lines);
+      for (let k = 0; k < n; k++) crackLines(rng, x, y, base + (k / Math.max(1, n - 1) - 0.5) * 1.0 + (rng() - 0.5) * 0.2, len * (0.7 + rng() * 0.5), 10, 2, lines);
       return lines;
     };
-    const specs = [
-      [corner(0, H, -Math.PI / 4, 3, m * 0.42)],
-      [corner(W, 0, (3 * Math.PI) / 4, 3, m * 0.4), corner(0, H * 0.55, -0.15, 1, m * 0.2)],
-      [corner(W, H, (-3 * Math.PI) / 4, 4, m * 0.45), corner(0, 0, Math.PI / 4, 2, m * 0.26), corner(W * 0.5, H, -Math.PI / 2, 2, m * 0.22)],
-    ];
-    this.layers = specs.map((groups) => {
-      const c = makeLayer(W, H);
+    const groups = i === 0 ? [corner(0, H, -Math.PI / 4, 3, m * 0.42)]
+      : i === 1 ? [corner(W, 0, (3 * Math.PI) / 4, 3, m * 0.4), corner(0, H * 0.55, -0.15, 1, m * 0.2)]
+        : [corner(W, H, (-3 * Math.PI) / 4, 4, m * 0.45), corner(0, 0, Math.PI / 4, 2, m * 0.26), corner(W * 0.5, H, -Math.PI / 2, 2, m * 0.22)];
+    const ls = Math.min(LAYER_SCALE, LAYER_MAX_W / W);
+    return groups.map((lines) => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const pts of lines) for (const [x, y] of pts) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; }
+      const pad = 12 * pr;
+      x0 = Math.max(0, Math.floor(x0 - pad)); y0 = Math.max(0, Math.floor(y0 - pad));
+      x1 = Math.min(W, Math.ceil(x1 + pad)); y1 = Math.min(H, Math.ceil(y1 + pad));
+      const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+      const c = makeLayer(Math.max(1, Math.round(w * ls)), Math.max(1, Math.round(h * ls)));
       const g = c.getContext("2d");
-      for (const lines of groups) strokeCracks(g, lines, pr);
-      return c;
+      g.scale(ls, ls); g.translate(-x0, -y0);
+      strokeCracks(g, lines, pr);
+      return { c, x: x0, y: y0, w, h };
     });
-    // a small radial burst used for the damage-direction flash
-    const bs = Math.round(m * 0.2);
+  }
+
+  _burst() {
+    if (this.burstLayer && this.burstKey === this.layerKey) return this.burstLayer;
+    const m = Math.min(this.w, this.h), pr = this.pr;
+    const bs = Math.max(8, Math.round(m * 0.2));
     const b = makeLayer(bs, bs);
     const bg = b.getContext("2d");
     const lines = [];
     const r2 = mulberry(0xb0057);
     for (let i = 0; i < 6; i++) crackLines(r2, bs / 2, bs / 2, (i / 6) * TAU + r2() * 0.5, bs * 0.45, 2.4, 1, lines);
     strokeCracks(bg, lines, pr);
-    this.burstLayer = b;
+    this.burstLayer = b; this.burstKey = this.layerKey;
+    return b;
   }
 
   /**
@@ -184,12 +213,16 @@ export class Overlay {
 
     // shell cracks (local player health)
     if (s.cracks !== false) {
-      this._buildLayers();
       for (let i = 0; i < 3; i++) {
         const target = stage >= i + 1 ? 1 : 0;
         const a = this.crackA[i];
         this.crackA[i] = a + Math.sign(target - a) * Math.min(Math.abs(target - a), dt / 0.3);
-        if (this.crackA[i] > 0.005) { ctx.globalAlpha = this.crackA[i]; ctx.drawImage(this.layers[i], 0, 0); }
+        if (this.crackA[i] > 0.005) {
+          // nothing is allocated at full health: a stage's layer is built the first time it shows
+          const L = this._layer(i), sx = W / this.layerSize[0], sy = H / this.layerSize[1];
+          ctx.globalAlpha = this.crackA[i];
+          for (const q of L) ctx.drawImage(q.c, q.x * sx, q.y * sy, q.w * sx, q.h * sy);
+        }
       }
       ctx.globalAlpha = 1;
       if (this.crackA[2] > 0.01) {
@@ -208,7 +241,7 @@ export class Overlay {
         const ang = Math.atan2(-wx, -wz) - s.yaw;
         const sa = -ang - Math.PI / 2;
         const ex = cx + Math.cos(sa) * W * 0.45, ey = cy + Math.sin(sa) * H * 0.45;
-        const bl = this.burstLayer, k = 1 + b.t * 0.6;
+        const bl = this._burst(), k = 1 + b.t * 0.6;
         ctx.globalAlpha = Math.max(0, 1 - b.t / 0.6);
         ctx.save(); ctx.translate(ex, ey); ctx.rotate(sa + (b.seed % 7)); ctx.scale(k, k);
         ctx.drawImage(bl, -bl.width / 2, -bl.height / 2);
@@ -438,5 +471,5 @@ export class Overlay {
     }
   }
 
-  dispose() { this.c.remove(); }
+  dispose() { this.c.remove(); this.layers = null; this.burstLayer = null; }
 }

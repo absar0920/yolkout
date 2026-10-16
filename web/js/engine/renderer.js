@@ -7,6 +7,7 @@
 //    (constant light count = no shader recompiles mid-game)
 
 import * as THREE from "../../vendor/three.module.min.js";
+import { trackRenderer } from "./gputrack.js";
 
 const QUALITY = {
   low: { shadows: 0, antialias: false, maxPR: 1, aniso: 1 },
@@ -23,6 +24,8 @@ export class Renderer {
       canvas, antialias: this.q.antialias, powerPreference: "high-performance", stencil: false, alpha: false,
     });
     const r = this.renderer;
+    // record this renderer's GPU 'dispose' listeners on the (module-cached) art so dispose() can drop them all
+    this.gpu = trackRenderer(r);
     // Checking shader logs forces synchronous program links (a long stall per new material);
     // keep it for ?debug sessions only.
     r.debug.checkShaderErrors = typeof location !== "undefined" && /[?&]debug\b/.test(location.search);
@@ -193,10 +196,16 @@ export class Renderer {
 
   dispose() {
     window.removeEventListener("resize", this._onResize);
-    this.scene.traverse((o) => {
-      if (o.geometry) o.geometry.dispose();
-      if (o.material) for (const m of [].concat(o.material)) m.dispose();
-    });
+    // free this renderer's copy of everything it uploaded (incl. cached art that is no longer in a scene, vmScene
+    // guns / gloves, ramp / crack / shell textures) without touching other renderers' copies
+    this.gpu.release();
+    // per-game objects (map meshes, sky, ...): free their JS-side resources too
+    for (const sc of [this.scene, this.vmScene]) {
+      if (!sc) continue;
+      sc.traverse((o) => {
+        if (o.geometry && !o.geometry.userData.cached) o.geometry.dispose();
+      });
+    }
     this.renderer.dispose();
     // release the WebGL context now: browsers cap live contexts (~16) and drop the oldest one
     this.renderer.forceContextLoss();

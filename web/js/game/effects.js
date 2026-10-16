@@ -160,7 +160,7 @@ export class Effects {
       const ball = new THREE.Mesh(ballGeo, new THREE.MeshBasicMaterial({ color: 0xffb03a, transparent: true, opacity: 0, depthWrite: false, fog: false }));
       const core = new THREE.Mesh(coreGeo, new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0, depthWrite: false, fog: false }));
       const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
-        color: 0xfff1c4, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false,
+        color: 0xfff1c4, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, fog: false,
       }));
       ring.rotation.x = -Math.PI / 2;
       ball.visible = ring.visible = core.visible = false;
@@ -184,7 +184,7 @@ export class Effects {
     this.casings = [];
     this.casingMesh = {};
     for (const kind of ["brass", "shell"]) {
-      const m = new THREE.InstancedMesh(buildCasing(kind), fxMaterial(), this.maxCasings);
+      const m = new THREE.InstancedMesh(buildCasing(kind), fxMaterial("#ffffff", 0.35, { tag: "inst" }), this.maxCasings);
       m.count = 0;
       m.frustumCulled = false;
       m.castShadow = false;
@@ -262,7 +262,21 @@ export class Effects {
       if (tHit - 0.5 < 0.6) return;
       sx = E[0] + dx * 0.5; sy = E[1] + dy * 0.5; sz = E[2] + dz * 0.5;
     }
-    this.tracer(sx, sy, sz, H[0], H[1], H[2], color, width);
+    let ex = H[0], ey = H[1], ez = H[2];
+    if (this.world) {
+      // last guard on the segment actually drawn: a remote shot's origin and end points are quantised (q2), so a ray
+      // that grazes a wall edge on the server can clip it here; never draw past the first solid this client sees
+      const fx = ex - sx, fy = ey - sy, fz = ez - sz;
+      const fL = Math.hypot(fx, fy, fz);
+      if (fL > 1e-4) {
+        const t = this.sim.raycastWorld(this.world, sx, sy, sz, fx / fL, fy / fL, fz / fL, fL);
+        if (t >= 0 && t < fL - 0.02) {
+          if (t < 0.6) return;
+          ex = sx + (fx / fL) * t; ey = sy + (fy / fL) * t; ez = sz + (fz / fL) * t;
+        }
+      }
+    }
+    this.tracer(sx, sy, sz, ex, ey, ez, color, width);
   }
 
   _part(arr, max, p) {

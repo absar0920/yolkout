@@ -192,6 +192,10 @@ func TestMathVectors(t *testing.T) {
 			D    [2]float64
 			Zone int
 		}
+		MeleeZone []struct {
+			O, D, P [3]float64
+			Zone    int
+		}
 		ZoneMul []struct {
 			Weapon string
 			Zone   int
@@ -262,6 +266,21 @@ func TestMathVectors(t *testing.T) {
 	for _, zz := range []int{ZoneHead, ZoneBody, ZoneArm, ZoneLeg} {
 		if !seen[zz] {
 			t.Fatalf("hitZone vectors never produce zone %d", zz)
+		}
+	}
+	if len(vec.MeleeZone) < 8 {
+		t.Fatalf("math.json: %d meleeZone cases", len(vec.MeleeZone))
+	}
+	mseen := map[int]bool{}
+	for _, z := range vec.MeleeZone {
+		if got := MeleeZone(C, z.O[0], z.O[1], z.O[2], z.D[0], z.D[1], z.D[2], z.P[0], z.P[1], z.P[2]); got != z.Zone {
+			t.Fatalf("meleeZone %+v: got %d", z, got)
+		}
+		mseen[z.Zone] = true
+	}
+	for _, zz := range []int{ZoneHead, ZoneBody, ZoneArm, ZoneLeg} {
+		if !mseen[zz] {
+			t.Fatalf("meleeZone vectors never produce zone %d", zz)
 		}
 	}
 	for _, z := range vec.ZoneMul {

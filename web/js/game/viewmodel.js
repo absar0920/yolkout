@@ -6,7 +6,7 @@
 // Everything per frame is preallocated: update() does not allocate.
 
 import * as THREE from "../../vendor/three.module.min.js";
-import { buildGun, buildHand, buildMelee, buildGrenade, setOutlineQuality } from "./art/index.js";
+import { buildGun, buildHand, buildMelee, buildGrenade, setOutlineQuality, retagMaterials } from "./art/index.js";
 import { Spring, clamp01, smooth } from "./vm/springs.js";
 import { sampleGun, sampleScalar, sampleStep, sampleTargets, crossEvents, tlEnd } from "./vm/anims.js";
 import { reloadTimeline, cycleTimeline, meleeTimeline, grenadeTimeline, switchTimeline, drawTimeline, SWAP_AT } from "./vm/timelines.js";
@@ -27,7 +27,8 @@ const HIP = {
   coddler: { p: [0.15, -0.16, -0.42], r: [0.02, 0.16, -0.05] },
 };
 // ADS: distance from the eye to the sight socket (m); the pistol is held at arm's length
-const ADS_EYE = { coddler: 0.24, poacher: 0.24 };
+// (longer for guns whose stock / receiver would otherwise fill the lower screen: deviler, frittata, benedict)
+const ADS_EYE = { coddler: 0.24, poacher: 0.26, deviler: 0.27, frittata: 0.19, benedict: 0.15 };
 // Per weapon-class recoil impulses (5.3 table): back z (m), rotX (rad), rotZ random (rad)
 const RECOIL = {
   "Assault Rifle": [0.035, 3 * D, 0.6 * D], "Burst Rifle": [0.035, 3 * D, 0.6 * D], SMG: [0.025, 2 * D, 0.8 * D],
@@ -84,6 +85,7 @@ export class ViewModel {
       const g = this.hands[k].group;
       g.matrixAutoUpdate = false;
       g.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; } });
+      retagMaterials(g, "vm");
       this.root.add(g);
     }
     this.pinchL = this.hands.L.points.pinch.position.clone();
@@ -97,6 +99,7 @@ export class ViewModel {
     this.meleeId = "";
     this.melee = null;
     this.nade = buildGrenade({ lod: "fp" });
+    retagMaterials(this.nade.group || this.nade, "vm");
     this.nadeGroup = this.nade.group || this.nade;
     this.nadeGroup.matrixAutoUpdate = false;
     this.nadeGroup.visible = false;
@@ -154,6 +157,7 @@ export class ViewModel {
     let g = this.guns.get(id);
     if (!g) {
       g = buildGun(id, { lod: "fp" });
+      retagMaterials(g.group, "vm"); // VM-only material instances (no fog, own program variant)
       g.group.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
       g.anchors = {};
       for (const k of ["shell", "clip", "rocket"]) if (g.parts[k]) { const a = makeAnchor(k, this.pinchL); g.parts[k].add(a); g.anchors[k] = a; }
@@ -221,12 +225,20 @@ export class ViewModel {
     this._start(switchTimeline(), Math.max(0.15, sw), "switch");
   }
 
-  setMelee(id) {
-    if (!id || id === this.meleeId) return;
-    this.meleeId = id;
+  /**
+   * Build every FP gun and melee now (hidden; they share cached geometry), so a compile pass over vmScene links all
+   * their programs (e.g. the frittata's sight glass) instead of hitching on the first draw mid-game.
+   */
+  prebuild(gunIds = [], meleeIds = []) {
+    for (const id of gunIds) if (id && this.W[id]) this._gun(id);
+    for (const id of meleeIds) if (id) this._melee(id);
+  }
+
+  _melee(id) {
     let m = this.melees.get(id);
     if (!m) {
       m = buildMelee(id, { lod: "fp" });
+      retagMaterials(m.group, "vm");
       m.group.matrixAutoUpdate = false;
       m.group.visible = false;
       m.group.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; } });
@@ -236,6 +248,13 @@ export class ViewModel {
       this.root.add(m.group);
       this.melees.set(id, m);
     }
+    return m;
+  }
+
+  setMelee(id) {
+    if (!id || id === this.meleeId) return;
+    this.meleeId = id;
+    const m = this._melee(id);
     if (this.melee && this.melee !== m) this.melee.group.visible = false;
     this.melee = m;
   }
@@ -244,6 +263,7 @@ export class ViewModel {
     if (!css || css === this.handColor) return;
     this.handColor = css;
     this.hands.L.setColor(css); this.hands.R.setColor(css);
+    retagMaterials(this.hands.L.group, "vm"); retagMaterials(this.hands.R.group, "vm");
   }
 
   setQuality(q) { setOutlineQuality(q === "low" ? "low" : q || "high"); }
@@ -279,8 +299,9 @@ export class ViewModel {
   }
 
   /** Local reload started: {empty, mag, magSize, reloadTime}. */
-  reloadStart({ empty, mag = 0, magSize = 1 } = {}) {
-    this.reloadInfo = { empty: !!empty, n: Math.max(1, magSize - mag) };
+  reloadStart({ empty, mag = 0, magSize = 1, reserve = -1 } = {}) {
+    // rounds that will actually go in: sim refill() takes min(need, reserve) (reserve < 0 = infinite)
+    this.reloadInfo = { empty: !!empty, n: Math.max(1, Math.min(magSize - mag, reserve < 0 ? Infinity : reserve)) };
     this.reloadTl = null;
     if (this.act && this.act.kind === "cycle") this.act = null;
   }
@@ -511,7 +532,8 @@ export class ViewModel {
 
   _reloadTl(st, forFreeze) {
     const def = this.def || {};
-    const info = this.reloadInfo || { empty: (st.mag | 0) === 0, n: Math.max(1, (def.magSize || 1) - (st.mag | 0)) };
+    const res = st.res == null || st.res < 0 ? Infinity : st.res;
+    const info = this.reloadInfo || { empty: (st.mag | 0) === 0, n: Math.max(1, Math.min((def.magSize || 1) - (st.mag | 0), res)) };
     const key = `${this.currentId}|${info.empty ? 1 : 0}|${info.n}`;
     if (!this.reloadTl || this.reloadKey !== key) {
       this.reloadTl = reloadTimeline(def.reloadStyle || "mag", { id: this.currentId, empty: info.empty, n: info.n });

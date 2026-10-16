@@ -417,7 +417,11 @@ For each `fire` action of a `hitscan` weapon:
 on the `melee` action end spawn protection and broadcast `{"t":"melee","id":..,"w":meleeId}` to everyone except the attacker.
 On the later `meleeHit` action (after `windup`), resolve the hit with **that input's** yaw, pitch, `rt` and post-movement eye: direction = aim vector
 (no spread), `rayEgg` with radii inflated by the melee's `inflate`, its `range`, the same lag-compensated targets, blocked by world (`raycastWorld`).
-Only the nearest victim is hit. The zone is taken on the inflated hit point; damage `floor(damage * zoneMul(m, zone) * dmgMul + 0.5)` (only the head
+Only the nearest victim is hit. The zone is taken on the **real (uninflated) egg**, not on the inflated hit point:
+`zone = meleeZone(C, O, dir, victimPos)` (sim.mjs) takes the point of the aim ray closest to the egg centre in the egg's own ellipsoid
+metric (`q = (O-c)/r`, `e = dir/r`, `s = max(0, -(q.e)/(e.e))`, `n = q + e*s`, `n /= |n|` when `|n| > 1`), maps it back to `c + n*r`
+and applies `hitZone` to it. So a point-blank swing at the belly or feet is a body/leg hit, and only a swing aimed at the top cap is a head hit
+(also when the eye is already inside the inflated egg). Damage `floor(damage * zoneMul(m, zone) * dmgMul + 0.5)` (only the head
 gets `headMul`; `hs = (zone == 1)`). Then, if the victim is still alive and `knockback K > 0`: `k = normalize(victim.xz - attacker.xz)`
 (the horizontal aim direction if that length is below 1e-6), `v.x += k.x*K; v.z += k.z*K; v.y += K*meleeKnockUp (0.35); onGround = false; coy = 0`.
 Spawn-protected victims take no damage and no knockback. The `hit` and `kill` weapon id is the melee id.
@@ -670,7 +674,7 @@ Duplicate names are allowed. **Chat:** strip control characters, trim, cut to 12
   the coyote-time cases `coyote_jump_after_ledge` and `coyote_expired`.
 * `shared/testvectors/weapons.json`: per case, a primary, an optional melee and inputs `[buttons, slot, moving]` with the expected 15-element `ws`
   array and actions per tick (`meleeHit` included).
-* `shared/testvectors/math.json`: mulberry32 outputs, shot seeds, `shotDirs`, `rayEgg`, `raycastWorld`, `falloffDamage`, `hitZone`, `zoneMul`.
+* `shared/testvectors/math.json`: mulberry32 outputs, shot seeds, `shotDirs`, `rayEgg`, `raycastWorld`, `falloffDamage`, `hitZone`, `meleeZone`, `zoneMul`.
 * Regenerate with `node scripts/gen-testvectors.mjs`. Check that the JS ref still matches with `--check`. The Go port's `go test` loads these files
   (path relative to the server module: `../shared/testvectors`) and requires `|a-b| <= 1e-9` for floats and exact equality for integers.
 

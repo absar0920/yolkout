@@ -443,6 +443,29 @@ func HitZone(C *Consts, hx, hy, hz, px, py, pz, dx, dz float64) int {
 	return ZoneBody
 }
 
+// MeleeZone is the zone of a melee hit (PROTOCOL.md 9.3): the point of the
+// aim ray closest to the egg centre in the real (uninflated) ellipsoid metric,
+// pulled onto the real surface when it lies outside, then HitZone. Mirrors
+// sim.mjs meleeZone.
+func MeleeZone(C *Consts, ox, oy, oz, dx, dy, dz, px, py, pz float64) int {
+	rx, ry, rz := C.HitRadii[0], C.HitRadii[1], C.HitRadii[2]
+	qx, qy, qz := (ox-px)/rx, (oy-(py+C.HitCenterY))/ry, (oz-pz)/rz
+	ex, ey, ez := dx/rx, dy/ry, dz/rz
+	ee := mul(ex, ex) + mul(ey, ey) + mul(ez, ez)
+	s := 0.0
+	if ee > 0 {
+		s = -(mul(qx, ex) + mul(qy, ey) + mul(qz, ez)) / ee
+	}
+	if s < 0 {
+		s = 0
+	}
+	nx, ny, nz := qx+mul(ex, s), qy+mul(ey, s), qz+mul(ez, s)
+	if l := math.Sqrt(mul(nx, nx) + mul(ny, ny) + mul(nz, nz)); l > 1 {
+		nx, ny, nz = nx/l, ny/l, nz/l
+	}
+	return HitZone(C, px+mul(nx, rx), py+C.HitCenterY+mul(ny, ry), pz+mul(nz, rz), px, py, pz, dx, dz)
+}
+
 // ZoneMul is the damage multiplier of a zone for w (melee: head bonus only).
 func ZoneMul(w *data.Weapon, zone int) float64 {
 	z := w.Zones

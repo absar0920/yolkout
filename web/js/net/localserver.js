@@ -502,7 +502,7 @@ export class LocalServer {
     }
     if (!best || this.k < best.o.protEnd) return;
     const V = best.o;
-    const zone = Sim.hitZone(C, ox + d[0] * bt, oy + d[1] * bt, oz + d[2] * bt, best.x, best.y, best.z, d[0], d[2]);
+    const zone = Sim.meleeZone(C, ox, oy, oz, d[0], d[1], d[2], best.x, best.y, best.z);
     this._damage(V, P, Math.floor(M.damage * Sim.zoneMul(M, zone) * this._dmgMul(P) + 0.5), P.spawnMel || this._defMelee(), zone, ox, oy, oz);
     const K = M.knockback || 0;
     if (K > 0 && V.alive && !(this.k < V.protEnd)) {

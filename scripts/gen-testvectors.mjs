@@ -140,12 +140,26 @@ const hitZone = [
   [10.05, 5.7, -3.0, 10, 5, -3, 0.6, -0.8], // offset egg, diagonal ray near the axis -> body
   [3.3, 2.2, 1.0, 3, 1.0, 1.25, 0.7071067811865476, 0.7071067811865476], // head on a raised egg
 ].map(([hx, hy, hz, px, py, pz, dx, dz]) => ({ h: [hx, hy, hz], p: [px, py, pz], d: [dx, dz], zone: S.hitZone(C, hx, hy, hz, px, py, pz, dx, dz) }));
+// melee zones: [ox,oy,oz, yaw,pitch, px,py,pz] -> zone on the real (uninflated) egg (PROTOCOL 9.3).
+const meleeZone = [
+  [0, 1.3, 0, 0, -0.8, 0, 0, -0.75], // touching, aiming at the feet: body (not head from the eye inside the inflated egg)
+  [0, 1.3, 0, 0, -0.4, 0, 0, -0.75], // touching, belly: body
+  [0, 1.3, 0, 0, 0, 0, 0, -0.75], // touching, level at eye height: head
+  [0, 1.3, 0, 0, -0.6, 0, 0, -1.0], // 1 m, belly: body
+  [0, 1.3, 0, 0, -0.8, 0, 0, -1.7], // 1.7 m, low: leg
+  [0, 1.3, 0, 0, -0.1, 0, 0, -1.7], // 1.7 m, top cap: head
+  [0, 1.3, 0, 0.35, -0.3, 0, 0, -1.2], // off-axis: arm
+  [0.3, 1.3, 0, 0, -0.35, 0, 0, -1.0], // aim slightly right of the axis: body
+  [0, 1.3, 0, 0, 1.2, 0, 0, -1.0], // aiming up past the egg: pulled onto the surface (head)
+  [0, 1.3, 0, Math.PI, -0.5, 0, 0, -1.0], // facing away (closest point is the eye itself)
+  [5, 3.3, 5, 0.6, -0.5, 4.2, 2, 4.1], // raised, offset egg
+].map(([ox, oy, oz, yaw, pitch, px, py, pz]) => { const d = S.aimDir(yaw, pitch); return { o: [ox, oy, oz], d, p: [px, py, pz], zone: S.meleeZone(C, ox, oy, oz, d[0], d[1], d[2], px, py, pz) }; });
 const zoneMul = [...weapons.primaries, weapons.secondary, ...weapons.melees, weapons.grenade].flatMap((id) => [0, 1, 2, 3, 4].map((z) => ({ weapon: id, zone: z, mul: S.zoneMul(weapons.weapons[id], z) })));
 
 const files = {
   "movement.json": { note: "state = [x,y,z,vx,vy,vz,onGround,coy] after each input; input = [keys,yaw,pitch,buttons,slot]; seq = index+1; weapons from 'primary'", dt: C.dt, cases: movement },
   "weapons.json": { note: "input = [buttons, slot, moving]; defs = defsFor(primary, melee); expect[i].ws = weapon state array (15 entries) after tick i; acts = actions emitted", dt: C.dt, cases: weaponVec },
-  "math.json": { rng, seeds, dirs, egg, casts, falloff, hitZone, zoneMul },
+  "math.json": { rng, seeds, dirs, egg, casts, falloff, hitZone, meleeZone, zoneMul },
 };
 const outDir = join(root, "shared/testvectors");
 mkdirSync(outDir, { recursive: true });

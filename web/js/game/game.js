@@ -80,6 +80,7 @@ export class Game {
 
     this.R = new Renderer(canvas, this.settings);
     this.overlay = new Overlay(container);
+    this.overlay.setPixelRatioCap(this.R.pixelRatio());
     this.effects = new Effects(this.R, Phys, { lowFx: this.settings.quality === "low" });
     this.vm = new ViewModel(this.R, data);
     this.vm.setQuality(this.settings.quality);
@@ -296,11 +297,48 @@ export class Game {
     // Pre-link the map's shader programs in parallel (KHR_parallel_shader_compile) so the first
     // frames don't hitch; bounded so a slow driver never delays joining by more than ~1.5 s.
     const r = this.R.renderer;
+    // every FP gun / melee exists (hidden) so the vmScene pass links all of them (sight glass, other loadouts)
+    const WD = this.data.weapons;
+    this.vm.prebuild([...(WD.primaries || []), WD.secondary], WD.melees || []);
+    // a hidden egg avatar lives for the whole game: it warms the shell / skinned limb / outline programs before
+    // the first remote egg appears, and keeps them referenced when the last real player leaves
+    this._ensureWarmAvatar();
     if (r.compileAsync) {
       // warm the view-model programs too (toon / skinned gloves / outlines), so the first shot does not hitch
       const vmWarm = r.compileAsync(this.R.vmScene, this.R.vmCamera).catch(() => {});
       await Promise.race([Promise.all([r.compileAsync(this.R.scene, this.R.camera).catch(() => {}), vmWarm]), new Promise((res) => setTimeout(res, 1500))]);
     }
+    if (this.stopped) return;
+    // one real frame with the warm avatar drawn under the map: links the skinned shadow-depth variant too
+    const wa = this.warmAv;
+    if (wa) {
+      const b = json.bounds || { min: [0, 0, 0], max: [0, 0, 0] };
+      wa.root.position.set((b.min[0] + b.max[0]) / 2, (b.min[1] || 0) - 4, (b.min[2] + b.max[2]) / 2);
+      wa.setVisible(true);
+      if (wa.meleeModel) wa.meleeModel.group.visible = true;
+      if (wa.tpNade) wa.tpNade.visible = true;
+      try { this.R.render(false); } catch { /* ignore */ }
+      wa.setVisible(false);
+      if (wa.meleeModel) wa.meleeModel.group.visible = false;
+      if (wa.tpNade) wa.tpNade.visible = false;
+    }
+  }
+
+  _ensureWarmAvatar() {
+    if (this.warmAv) return;
+    try {
+      const cm = this.data.cosmetics || {};
+      const pick = (list) => (list && list.length ? list[list.length - 1].id : undefined);
+      const WD = this.data.weapons;
+      const av = new EggAvatar(this.data, { name: "", team: 0, teamColor: "#ffffff", nameplate: false, id: -1,
+        cos: { color: pick(cm.colors), hat: pick(cm.hats), stamp: pick(cm.stamps) },
+        cls: (WD.primaries && WD.primaries[0]) || this.cls, mel: this._meleeId(this.mel) });
+      av.update({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, flags: 3 }, 1 / 60, 0);
+      av.setVisible(false);
+      av.root.name = "warm-avatar";
+      this.R.scene.add(av.root);
+      this.warmAv = av;
+    } catch (e) { console.warn("warm-up avatar failed", e); }
   }
 
   _teamColor(t) {
@@ -513,7 +551,7 @@ export class Game {
       this._cb("onSpawn", { x: m.x, y: m.y, z: m.z, cls: m.cls, mel });
     } else {
       const av = this.avatars.get(m.id);
-      if (av) { av.setWeapon(m.cls); av.setMelee(mel); av.setHealth(1, 0); av.deadUntilSpawn = false; }
+      if (av) { av.setWeapon(m.cls); av.rearm(); av.setMelee(mel); av.setHealth(1, 0); av.deadUntilSpawn = false; }
     }
   }
 
@@ -566,7 +604,14 @@ export class Game {
 
   _onBoom(m) {
     this.effects.explosion(m.x, m.y, m.z, m.r || 4, this.R.camera.position);
-    for (const pp of this.predProj) if (pp.srv === m.id) pp.dead = 9;
+    let claimed = false;
+    for (const pp of this.predProj) if (pp.srv === m.id) { pp.dead = 9; claimed = true; }
+    if (!claimed && m.o === this.myId) {
+      // our shot burst before any snapshot carried it (e.g. a rocket into an egg 1-2 ticks out): retire the oldest unclaimed prediction
+      const now = performance.now();
+      const pp = this.predProj.find((q) => !q.srv && !q.dead && q.kind === m.k && now - q.t0 < 1000);
+      if (pp) pp.dead = 9;
+    }
     playAt("explode", m.x, m.y, m.z, this._listener(), 1.2, 70);
     const mesh = this.projMeshes.get(m.id);
     if (mesh) { this.R.scene.remove(mesh); this.projMeshes.delete(m.id); }
@@ -938,7 +983,7 @@ export class Game {
         }
       } else if (a.a === "reload") {
         const slot = P.ws.slot, w = P.defs.w[slot];
-        this.vm.reloadStart({ empty: P.ws.mag[slot] === 0, mag: P.ws.mag[slot], magSize: w.magSize, reloadTime: w.reloadTime });
+        this.vm.reloadStart({ empty: P.ws.mag[slot] === 0, mag: P.ws.mag[slot], magSize: w.magSize, reserve: P.ws.res[slot], reloadTime: w.reloadTime });
         play("reload_start", { volume: 0.6, local: true });
       } else if (a.a === "switch") {
         const w = P.defs.w[a.slot];
@@ -1001,6 +1046,27 @@ export class Game {
     for (let i = this.predProj.length - 1; i >= 0; i--) {
       const pp = this.predProj[i];
       pp.px = pp.pr.x; pp.py = pp.pr.y; pp.pz = pp.pr.z;
+      if (!pp.exploded && pp.kind === 1) {
+        // rockets burst on the first egg they touch (PROTOCOL 9.4), like the server's _stepProjectiles
+        const pr = pp.pr, dt = this.DT;
+        const sx = pr.vx * dt, sy = (pr.vy - pr.gravity * dt) * dt, sz = pr.vz * dt;
+        const len = Math.sqrt(sx * sx + sy * sy + sz * sz);
+        if (len > 0) {
+          const dx = sx / len, dy = sy / len, dz = sz / len;
+          let tw = Phys.raycastWorld(this.world, pr.x, pr.y, pr.z, dx, dy, dz, len);
+          if (tw < 0) tw = len;
+          let hit = -1;
+          for (const T of this._targets()) {
+            const t = Phys.rayEgg(this.C, pr.x, pr.y, pr.z, dx, dy, dz, T.x, T.y, T.z, tw, pr.radius);
+            if (t >= 0 && t < tw && (hit < 0 || t < hit)) hit = t;
+          }
+          if (hit >= 0) {
+            pp.exploded = true; pp.eggAt = performance.now();
+            pr.x += dx * hit; pr.y += dy * hit; pr.z += dz * hit;
+            pp.mesh.visible = false;
+          }
+        }
+      }
       if (!pp.exploded) {
         const r = Phys.stepProjectile(this.world, pp.pr, this.DT);
         if (r && r.explode) { pp.exploded = true; pp.pr.x = r.x; pp.pr.y = r.y; pp.pr.z = r.z; }
@@ -1132,7 +1198,9 @@ export class Game {
         // hand our own shot over to the local prediction (same kind, spawned within the last second)
         let pp = this.predProj.find((q) => q.srv === id);
         if (!pp) { pp = this.predProj.find((q) => !q.srv && q.kind === kind && tNow - q.t0 < 1000); if (pp) pp.srv = id; }
-        if (pp) return; // (also after it hit a wall locally: the server boom follows)
+        // (also after it hit a wall or an egg locally: the server boom follows). If we predicted an egg hit
+        // the server did not see, its copy is still flying 250 ms later: show the server's rocket instead.
+        if (pp && !(pp.eggAt && tNow - pp.eggAt > 250)) return;
       }
       live.add(id);
       let m = this.projMeshes.get(id);
@@ -1190,7 +1258,7 @@ export class Game {
       vst.speed = Math.hypot(P.ps.vx, P.ps.vz); vst.vx = P.ps.vx; vst.vz = P.ps.vz; vst.vy = P.ps.vy; vst.yaw = this.yaw;
       vst.onGround = P.ps.onGround; vst.ads = aiming ? 1 : 0; vst.adsTime = adsTime; vst.adsBlend = this.adsT;
       vst.reloadFrac = reloadFrac; vst.switchFrac = sw; vst.scoped = scope !== "none"; vst.bob = this.settings.viewBob !== false;
-      vst.mag = P.ws.mag[P.ws.slot]; vst.alive = this.alive;
+      vst.mag = P.ws.mag[P.ws.slot]; vst.res = P.ws.res[P.ws.slot]; vst.alive = this.alive;
       if (this._freezeVm) vst.reloadFrac = -1;
       this.vm.update(dt, vst);
     }
@@ -1403,6 +1471,7 @@ export class Game {
   setSettings(s) {
     Object.assign(this.settings, s || {});
     this.R.applySettings(this.settings);
+    this.overlay.setPixelRatioCap(this.R.pixelRatio());
     this.input.setSettings(this.settings);
     this.vm.setQuality(this.settings.quality);
     for (const av of this.avatars.values()) if (av.plate) av.plate.visible = this.settings.nameplates !== false;
@@ -1435,6 +1504,7 @@ export class Game {
     this.predProj.length = 0;
     this.vm.dispose();
     for (const av of this.avatars.values()) av.dispose();
+    if (this.warmAv) { this.warmAv.dispose(); this.warmAv = null; }
     if (this.mapMesh) this.mapMesh.dispose();
     this.R.dispose();
     if (this._ownCanvas) this.canvas.remove();

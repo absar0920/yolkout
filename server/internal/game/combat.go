@@ -238,8 +238,7 @@ func (r *Room) meleeHit(p *Player, in *sim.Input) {
 	if victim == nil || victim.protected(r.k) {
 		return
 	}
-	hx, hy, hz := o[0]+float64(d[0]*limit), o[1]+float64(d[1]*limit), o[2]+float64(d[2]*limit)
-	zone := sim.HitZone(r.C, hx, hy, hz, vt.x, vt.y, vt.z, d[0], d[2])
+	zone := sim.MeleeZone(r.C, o[0], o[1], o[2], d[0], d[1], d[2], vt.x, vt.y, vt.z)
 	r.damage(victim, p.ID, int(math.Floor(float64(float64(m.Damage*sim.ZoneMul(m, zone))*p.dmgMul(r))+0.5)), zone, m.ID, o)
 	if K := m.Knockback; K > 0 && victim.Alive && !victim.protected(r.k) {
 		kx, kz := victim.PS.X-p.PS.X, victim.PS.Z-p.PS.Z

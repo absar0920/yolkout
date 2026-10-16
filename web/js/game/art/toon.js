@@ -102,7 +102,8 @@ const toonCache = new Map();
 export function toonMaterial(color = "#ffffff", opts = {}) {
   const rim = opts.rim ?? 0.35, rimColor = opts.rimColor || "#fff3d6";
   const key = [color, opts.map ? opts.map.uuid : "", opts.vertexColors ? 1 : 0, opts.fx ? 1 : 0, opts.tint || "",
-    opts.emissive || "", opts.emissiveIntensity ?? 1, rim, rimColor, opts.side ?? 0, opts.transparent ? opts.opacity ?? 1 : "", opts.flatShading ? 1 : 0].join("|");
+    opts.emissive || "", opts.emissiveIntensity ?? 1, rim, rimColor, opts.side ?? 0, opts.transparent ? opts.opacity ?? 1 : "", opts.flatShading ? 1 : 0,
+    opts.tag || ""].join("|");
   let m = toonCache.get(key);
   if (m) return m;
   m = new THREE.MeshToonMaterial({
@@ -120,13 +121,34 @@ export function toonMaterial(color = "#ffffff", opts = {}) {
   m.onBeforeCompile = toonCompile;
   m.customProgramCacheKey = toonKey;
   m.name = `toon:${key}`;
+  m.userData.yoArgs = [color, opts];
   toonCache.set(key, m);
   return m;
 }
 
-/** The single material every merged (vertex-coloured, glow/tint attribute) mesh uses. */
-export function fxMaterial(tint = "#ffffff", rim = 0.35) {
-  return toonMaterial("#ffffff", { fx: true, tint, rim });
+/**
+ * The material every merged (vertex-coloured, glow/tint attribute) mesh uses. opts.tag gives a separate cached
+ * instance for one drawing context (e.g. "vm" = the unfogged view-model scene, "inst" = instanced pools,
+ * "skin" = skinned meshes): three keeps one current program per material, so a material object shared across
+ * contexts would re-resolve its program on every switch.
+ */
+export function fxMaterial(tint = "#ffffff", rim = 0.35, opts = {}) {
+  return toonMaterial("#ffffff", { fx: true, tint, rim, tag: opts.tag });
+}
+
+/** The same cached toon material as `m` in drawing context `tag` (m itself when it is not a toon material). */
+export function taggedMaterial(m, tag) {
+  const a = m && m.userData && m.userData.yoArgs;
+  if (!a || (a[1].tag || "") === (tag || "")) return m;
+  return toonMaterial(a[0], Object.assign({}, a[1], { tag }));
+}
+
+/** Retag every toon material under `root` (outlines keep theirs). */
+export function retagMaterials(root, tag) {
+  root.traverse((o) => {
+    if (o.material && !Array.isArray(o.material) && !o.userData.isOutline) o.material = taggedMaterial(o.material, tag);
+  });
+  return root;
 }
 
 export function toonCompileHook() { return { onBeforeCompile: toonCompile, key: toonKey }; }
@@ -148,8 +170,9 @@ function outlineKey() { return "yo-outline-1"; }
 
 let outlineQuality = "high";
 const outlineMats = new Map();
-function outlineMaterial(width, color) {
-  const key = `${width}|${color}`;
+function outlineMaterial(width, color, skinned = false) {
+  // skinned and plain outlines are separate instances (one program variant each)
+  const key = `${width}|${color}${skinned ? "|skin" : ""}`;
   let m = outlineMats.get(key);
   if (m) return m;
   m = new THREE.MeshBasicMaterial({ color: new THREE.Color(color), side: THREE.BackSide });
@@ -195,7 +218,6 @@ export function smoothNormalsFor(geo) {
  * Skinned meshes get a skinned outline bound to the same skeleton. Returns the outline meshes.
  */
 export function addOutline(object3D, { width = 0.0045, color = PAL.ink } = {}) {
-  const mat = outlineMaterial(width, color);
   const targets = [];
   object3D.traverse((o) => {
     if (o.isMesh && !o.userData.isOutline && !o.userData.noOutline && !o.isInstancedMesh) targets.push(o);
@@ -204,6 +226,7 @@ export function addOutline(object3D, { width = 0.0045, color = PAL.ink } = {}) {
   for (const o of targets) {
     smoothNormalsFor(o.geometry);
     let m;
+    const mat = outlineMaterial(width, color, !!o.isSkinnedMesh);
     if (o.isSkinnedMesh) {
       m = new THREE.SkinnedMesh(o.geometry, mat);
       m.bind(o.skeleton, o.bindMatrix);

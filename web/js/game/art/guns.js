@@ -14,7 +14,7 @@ import { pinchPoint } from "./hands.js";
 import { rocketGeometry } from "./throwables.js";
 
 export const GUN_IDS = ["benedict", "deviler", "poacher", "piercer", "frittata", "overeasy", "souffle", "coddler"];
-const TP_KEEP = new Set(["static", "mag"]);
+const TP_KEEP = new Set(["static", "mag", "rocket"]); // rocket: the launcher warhead hides after a shot (EggAvatar)
 const HIDDEN = new Set(["shell", "clip"]);
 const NO_OUTLINE = new Set(["trigger", "sightGlass", "rocket"]);
 
@@ -415,8 +415,16 @@ const DESIGNS = {
     k.cyl("static", O, [0, SY, -0.28], 0.047, 0.014, { bevel: 0.004, seg: k.fp ? 18 : 8 });
     k.cyl("static", PAL.lens, [0, SY, -0.286], 0.04, 0.006, { bevel: 0, seg: 18, fp: true, caps: [true, false] });
     k.sph("static", PAL.glint, [0.014, SY + 0.016, -0.29], [0.011, 0.007, 0.002], { glow: 1, ws: 8, hs: 4, fp: true });
-    k.cyl("static", O, [0, SY + 0.07, -0.29], 0.046, 0.01, { rot: [-1.35, 0, 0], bevel: 0, seg: k.fp ? 16 : 6 });
-    k.cyl("static", O, [0, SY + 0.06, 0.15], 0.036, 0.01, { rot: [1.35, 0, 0], bevel: 0, seg: k.fp ? 14 : 6 });
+    // flip-up caps, hinged on the top edge of each bell and swung open past vertical (raised CAP_E above the scope line)
+    const CAP_E = 0.8;
+    const cap = (lensZ, bellR, capR, dir) => {
+      const hy = SY + bellR + 0.002;
+      k.box("static", O2, [0, hy + 0.002, lensZ], [0.014, 0.008, 0.012], { r: 0.002, seg: 0 });
+      k.cyl("static", O, [0, hy + Math.sin(CAP_E) * capR, lensZ + dir * Math.cos(CAP_E) * capR], capR, 0.01,
+        { rot: [dir * (Math.PI / 2 - CAP_E), 0, 0], bevel: 0, seg: k.fp ? 16 : 6 });
+    };
+    cap(-0.288, 0.047, 0.046, -1);
+    cap(0.137, 0.036, 0.036, 1);
     k.cyl("static", PAL.lens, [0, SY, 0.137], 0.03, 0.004, { bevel: 0, seg: 16, fp: true });
     // turrets + rings
     k.cyl("static", O, [0, SY + 0.04, -0.06], 0.017, 0.03, { axis: "y" });

@@ -9,7 +9,7 @@ const geoCache = new Map();
 /** Cache a geometry by key (shared between every model instance). */
 export function cachedGeo(key, make) {
   let g = geoCache.get(key);
-  if (!g) { g = make(); geoCache.set(key, g); }
+  if (!g) { g = make(); g.userData.cached = true; geoCache.set(key, g); }
   return g;
 }
 
