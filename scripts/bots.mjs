@@ -3,7 +3,8 @@
 //   node scripts/bots.mjs [--url ws://localhost:18400/ws] [--n 24] [--secs 30] [--pid <server pid>] [--json]
 //
 // Phase 1, protocol checks: version mismatch -> err version, oversized frame -> err too_big,
-//   malformed JSON -> err bad_msg, unknown room code -> err no_room, ping/pong, ld -> pu broadcast.
+//   malformed JSON -> err bad_msg, unknown room code -> err no_room, ping/pong, ld -> pu broadcast,
+//   melee loadout (hello.mel, ld.mel -> pu, the next spawn's mel, unknown mel -> default) and splash z 0.
 // Phase 2, load: N clients (default 24) split across two rooms: half in a public quickplay FFA room,
 //   half in a private Team Scramble room (one creates it, the rest join by code). Every client
 //   sends 60 Hz inputs batched in pairs, aims at the nearest enemy from snapshots, strafes, jumps,
@@ -82,7 +83,7 @@ async function protocolChecks() {
   const sp = await waitFor(c, (m) => m.t === "spawn" && w && m.id === w.id);
   check("protocol: spawn after welcome", !!sp);
   const s = await waitFor(c, (m) => m.t === "s" && m.me);
-  check("protocol: snapshot with me/ws", s && Array.isArray(s.me.ws) && s.me.ws.length === 14 && Array.isArray(s.p));
+  check("protocol: snapshot with me/ws/cy", s && Array.isArray(s.me.ws) && s.me.ws.length === 15 && Number.isInteger(s.me.cy) && Array.isArray(s.p));
   c.ws.send(JSON.stringify({ t: "ping", c: 4242, rtt: 0 }));
   const pong = await waitFor(c, (m) => m.t === "pong" && m.c === 4242);
   check("protocol: ping -> pong", !!pong);
@@ -107,6 +108,8 @@ async function protocolChecks() {
   e = await waitFor(c, (m) => m.t === "err");
   check("protocol: >4096 byte frame -> err too_big", e && e.code === "too_big", e && e.code);
 
+  await meleeLoadoutChecks();
+
   c = await connect();
   c.ws.send(hello({ room: "QQQQQQ" }));
   e = await waitFor(c, (m) => m.t === "err");
@@ -118,12 +121,63 @@ async function protocolChecks() {
   check("protocol: malformed JSON -> err bad_msg", e && (e.code === "bad_msg" || e.code === "bad_hello"), e && e.code);
 }
 
+/** Send 60 Hz inputs from c while step(i) returns [keys, yaw, pitch, buttons] (or null to stop). */
+function driveInputs(c, step, maxMs) {
+  return new Promise((resolve) => {
+    let seq = 0, i = 0;
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      const b = [];
+      for (let n = 0; n < 2; n++) {
+        const r = step(i++);
+        if (!r || Date.now() - t0 > maxMs || c.closed) { clearInterval(iv); resolve(!!r && !c.closed); return; }
+        const snap = c.msgs.findLast((m) => m.t === "s");
+        b.push([++seq, r[0], r[1], r[2], r[3], 0, snap ? snap.k - 6 : 0]);
+      }
+      c.ws.send(JSON.stringify({ t: "i", b }));
+    }, 33);
+  });
+}
+
+/** Melee loadout over the wire: hello.mel, ld.mel -> pu, applied at the next spawn, unknown -> default. */
+async function meleeLoadoutChecks() {
+  const c = await connect();
+  c.ws.send(hello({ name: "Pan Probe", create: 1, mode: "ffa", cls: "souffle", mel: "pan" }));
+  const w = await waitFor(c, (m) => m.t === "welcome");
+  const me = w && w.players.find((p) => p.id === w.id);
+  check("melee: hello mel -> roster mel", me && me.mel === "pan", me && me.mel);
+  const sp0 = await waitFor(c, (m) => m.t === "spawn" && w && m.id === w.id);
+  check("melee: first spawn carries mel", sp0 && sp0.mel === "pan", sp0 && sp0.mel);
+  c.ws.send(JSON.stringify({ t: "ld", mel: "whisk" }));
+  const pu = await waitFor(c, (m) => m.t === "pu" && m.p && w && m.p.id === w.id && m.p.mel === "whisk");
+  check("melee: ld {mel} alone -> pu with the new mel", !!pu, pu && pu.p.mel);
+  // die to our own launcher shells (straight down: about 54 self damage each) to get a fresh spawn
+  const dead = () => c.msgs.some((m) => m.t === "kill" && w && m.v === w.id);
+  await driveInputs(c, (i) => (dead() ? null : [0, 0, -1.5, i % 8 < 2 ? 1 : 0]), 12000);
+  const kill = c.msgs.find((m) => m.t === "kill" && w && m.v === w.id);
+  check("melee: launcher self-kill (setup)", !!kill, kill && JSON.stringify(kill));
+  const splash = c.msgs.filter((m) => m.t === "hit" && w && m.v === w.id);
+  check("protocol: splash hits carry z 0 and no headshot", splash.length > 0 && splash.every((m) => m.z === 0 && m.hs === 0), JSON.stringify(splash.map((m) => [m.d, m.z])));
+  check("protocol: kill carries z", kill && kill.z === 0, kill && String(kill.z));
+  const sp1 = await waitFor(c, (m) => m.t === "spawn" && w && m.id === w.id && m !== sp0, 8000);
+  check("melee: next spawn uses the ld mel", sp1 && sp1.mel === "whisk", sp1 && sp1.mel);
+  // unknown melee ids fall back to the default
+  const c2 = await connect();
+  c2.ws.send(hello({ name: "Bogus Probe", room: w ? w.room.code : "", mel: "bogus" }));
+  const w2 = await waitFor(c2, (m) => m.t === "welcome");
+  const me2 = w2 && w2.players.find((p) => p.id === w2.id);
+  check("melee: unknown hello mel -> rollingpin", me2 && me2.mel === "rollingpin", me2 && me2.mel);
+  check("melee: every roster entry has a mel", w2 && w2.players.every((p) => typeof p.mel === "string" && p.mel));
+  c2.ws.close();
+  c.ws.close();
+}
+
 /** One load-test client. */
 function bot(n, { room = "", create = 0, mode = "ffa" } = {}) {
   return new Promise((resolve) => {
     const st = { n, id: 0, room: "", priv: 0, snaps: 0, snapTimes: [], firstK: -1, firstKAt: 0, lastK: -1, lastKAt: 0, acks: [0, 0],
       bytesIn: 0, wireIn: 0, bytesOut: 0, framesIn: 0, kills: 0, deaths: 0, spawns: 0, respawns: 0, chatsIn: 0, chatFrom: new Set() /* texts */, rtts: [],
-      errors: [], closed: null, players: new Map(), team: 0, startedAt: 0, endedAt: 0, shots: 0, hits: 0 };
+      errors: [], closed: null, players: new Map(), team: 0, startedAt: 0, endedAt: 0, shots: 0, hits: 0, badZones: 0, zoneHits: [0, 0, 0, 0, 0] };
     const ws = new WebSocket(URL_);
     let seq = 0, k = 0, kAt = 0, timer = 0, pinger = 0, pending = [], yaw = 0, pitch = 0, keys = 1, wasDead = false;
     let strafeT = 0, strafe = 4;
@@ -165,7 +219,11 @@ function bot(n, { room = "", create = 0, mode = "ffa" } = {}) {
           if (m.k === st.id && m.v !== st.id) st.kills++;
           if (m.v === st.id) { st.deaths++; wasDead = true; }
           break;
-        case "hit": if (m.a === st.id) st.hits++; break;
+        case "hit":
+          if (m.a === st.id) st.hits++;
+          if (!(Number.isInteger(m.z) && m.z >= 0 && m.z <= 4) || (m.hs === 1) !== (m.z === 1)) st.badZones++;
+          if (m.a === st.id && m.z >= 1) st.zoneHits[m.z]++;
+          break;
         case "chat": st.chatsIn++; st.chatFrom.add(m.m); break;
         case "pong": st.rtts.push(Date.now() - m.c); break;
         case "err": st.errors.push(m.code); break;
@@ -287,6 +345,8 @@ async function load() {
   const respawns = bots.reduce((a, b) => a + b.respawns, 0), deaths = bots.reduce((a, b) => a + b.deaths, 0);
   check("load: dead players respawn", respawns > 0 && respawns >= deaths - N, `${deaths} deaths, ${respawns} respawns`);
   check("load: hits confirmed to attackers", bots.reduce((a, b) => a + b.hits, 0) > 0, `${bots.reduce((a, b) => a + b.hits, 0)} hits`);
+  const zh = [1, 2, 3, 4].map((z) => bots.reduce((a, b) => a + b.zoneHits[z], 0));
+  check("load: hit events carry a valid zone (hs == z is head)", bots.every((b) => b.badZones === 0) && zh[1] > 0, `head/body/arm/leg ${zh.join("/")}`);
   // player ids are per room (both rooms have an id 1), so match chat by text
   const PUB = "gg from the public room", PRIV = "hello private room";
   check("load: public chat reached the public room only", bots.slice(0, half).every((b) => b.chatFrom.has(PUB)) && !bots.slice(half).some((b) => b.chatFrom.has(PUB)));

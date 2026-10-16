@@ -10,7 +10,8 @@ import { Connection } from "../net/connection.js";
 import { LocalServer } from "../net/localserver.js";
 import { TickClock } from "../net/clock.js";
 import { SnapshotBuffer } from "../net/interp.js";
-import { EggAvatar, buildPickup, buildNest, buildGoldenEgg, buildGrenade, buildShell } from "./models.js";
+import { EggAvatar, buildPickup, buildNest, buildGoldenEgg } from "./models.js";
+import { buildGrenade, buildRocket } from "./art/index.js";
 import { ViewModel } from "./viewmodel.js";
 import { Effects } from "./effects.js";
 import { Input } from "./input.js";
@@ -37,13 +38,19 @@ export const DEFAULT_SETTINGS = {
   rawInput: false,
   clickToLock: true,
   nameplates: true,
+  shellCracks: true,       // cracked-shell screen overlay at low health
   binds: null,             // partial override of input.DEFAULT_BINDS
 };
 
 const tmpV = new THREE.Vector3();
+const tmpV2 = new THREE.Vector3(), tmpV3 = new THREE.Vector3(), tmpQ = new THREE.Quaternion();
+const FWD = new THREE.Vector3(0, 0, -1);
+const smoothstep = (t) => { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
+// muzzle flash size per weapon class (world, remote players)
+const FLASH_SIZE = { Shotgun: 0.75, Sniper: 0.7, Launcher: 0.9, Pistol: 0.4, SMG: 0.42, Marksman: 0.55 };
 // Longest a dead player choosing a loadout can delay their respawn (server: respawnHoldMaxSec).
 const RESPAWN_HOLD_MAX_MS = 10000;
-const FLAG = { ALIVE: 1, GROUND: 2, AIM: 4, RELOAD: 8, PROT: 16, CARRY: 32, FURY: 64, SWITCH: 128, FIRED: 256 };
+const FLAG = { ALIVE: 1, GROUND: 2, AIM: 4, RELOAD: 8, PROT: 16, CARRY: 32, FURY: 64, SWITCH: 128, FIRED: 256, THREW: 512 };
 
 export class Game {
   constructor(data, opts) {
@@ -54,6 +61,7 @@ export class Game {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, opts.settings || {});
     this.name = opts.name || "";
     this.cls = data.weapons.primaries.includes(opts.cls) ? opts.cls : data.weapons.defaultPrimary;
+    this.mel = this._meleeId(opts.mel);
     this.cos = Object.assign({}, data.cosmetics.defaults, opts.cosmetics || {});
 
     // DOM: container + canvas
@@ -73,7 +81,12 @@ export class Game {
     this.R = new Renderer(canvas, this.settings);
     this.overlay = new Overlay(container);
     this.effects = new Effects(this.R, Phys, { lowFx: this.settings.quality === "low" });
-    this.vm = new ViewModel(this.R);
+    this.vm = new ViewModel(this.R, data);
+    this.vm.setQuality(this.settings.quality);
+    this.vm.setMelee(this.mel);
+    this.vm.onEvent = (type, arg) => this._vmEvent(type, arg);
+    const shell = this._shellCss();
+    if (shell) this.vm.setHandColor(shell);
     this.input = new Input(canvas, {
       onLockChange: (locked) => this._onLock(locked),
       onScoreboard: (v) => { this.sbVisible = v; this._cb("onScoreboardToggle", v); if (v) this._emitScoreboard(); },
@@ -139,7 +152,38 @@ export class Game {
     this.tAnim = 0;
     this.myStreak = 0;
     this.lastFrame = performance.now();
+    // presentation smoothing (camera): stair step offset, landing dip spring, strafe roll, ADS blend
+    this.stepOff = 0;
+    this.camDip = 0; this.camDipV = 0;
+    this.camRoll = 0;
+    this.adsLin = 0;
+    this.predProj = [];   // locally predicted rockets / quiches drawn until the server's copy takes over
+    this.lastAct = { reload: 0 };
     loadAudio();
+  }
+
+  /** View-model animation beats: reload/cycle sounds and casings. */
+  _vmEvent(type, arg) {
+    if (type === "snd") play(arg, { volume: 0.85, local: true });
+    else if (type === "eject") {
+      const cam = this.R.camera;
+      if (!this.alive || !this.predictor) return;
+      cam.updateMatrixWorld();
+      const p = this.vm.ejectorWorld(cam, tmpV2, tmpV3);
+      const ps = this.predictor.ps;
+      this.effects.casing(arg, p, tmpV3, tmpV.set(ps.vx, ps.vy, ps.vz));
+    }
+  }
+
+  _meleeId(id) {
+    const W = this.data.weapons;
+    const list = W.melees || [W.melee];
+    return list.includes(id) ? id : (W.defaultMelee || W.melee);
+  }
+
+  _shellCss() {
+    const c = this.data.cosmetics && this.data.cosmetics.colors.find((x) => x.id === this.cos.color);
+    return c ? c.shell : "";
   }
 
   _cb(name, ...args) {
@@ -168,7 +212,7 @@ export class Game {
       this.input.unlock();
     };
     const hello = {
-      name: this.name, cls: this.cls, cos: this.cos, mode: o.mode || "", map: o.map || "",
+      name: this.name, cls: this.cls, mel: this.mel, cos: this.cos, mode: o.mode || "", map: o.map || "",
       room: o.roomCode ? String(o.roomCode).toUpperCase() : "", create: o.createRoom ? 1 : 0,
     };
     const welcome = await this.conn.connect(hello);
@@ -253,7 +297,9 @@ export class Game {
     // frames don't hitch; bounded so a slow driver never delays joining by more than ~1.5 s.
     const r = this.R.renderer;
     if (r.compileAsync) {
-      await Promise.race([r.compileAsync(this.R.scene, this.R.camera).catch(() => {}), new Promise((res) => setTimeout(res, 1500))]);
+      // warm the view-model programs too (toon / skinned gloves / outlines), so the first shot does not hitch
+      const vmWarm = r.compileAsync(this.R.vmScene, this.R.vmCamera).catch(() => {});
+      await Promise.race([Promise.all([r.compileAsync(this.R.scene, this.R.camera).catch(() => {}), vmWarm]), new Promise((res) => setTimeout(res, 1500))]);
     }
   }
 
@@ -274,13 +320,14 @@ export class Game {
 
   _rosterSet(p) {
     const prev = this.roster.get(p.id);
-    const r = Object.assign(prev || { spawnCls: p.cls, ping: 0 }, p);
+    const r = Object.assign(prev || { spawnCls: p.cls, spawnMel: p.mel, ping: 0 }, p);
+    if (!r.spawnMel) r.spawnMel = this._meleeId(p.mel);
     this.roster.set(p.id, r);
     if (p.id === this.myId) { this.myTeam = p.tm; this.myStreak = p.st || 0; return r; }
     let av = this.avatars.get(p.id);
     if (!av) {
       av = new EggAvatar(this.data, { name: p.n, team: this._isTeams() ? p.tm : 0, teamColor: this._teamColor(p.tm), cos: p.cos || {},
-        cls: r.spawnCls || p.cls, nameplate: this.settings.nameplates !== false });
+        cls: r.spawnCls || p.cls, mel: this._meleeId(r.spawnMel), nameplate: this.settings.nameplates !== false, id: p.id });
       av.setVisible(false);
       this.R.scene.add(av.root);
       this.avatars.set(p.id, av);
@@ -339,7 +386,9 @@ export class Game {
       case "shot": this._onShot(m); break;
       case "melee": {
         const av = this.avatars.get(m.id);
-        if (av) { av.melee(); playAt("shoot_rollingpin", av.root.position.x, av.root.position.y, av.root.position.z, this._listener(), 0.7); }
+        const r = this.roster.get(m.id);
+        const mel = this._meleeId(m.w || (r && r.spawnMel));
+        if (av) { av.melee(mel); playAt(`shoot_${mel}`, av.root.position.x, av.root.position.y, av.root.position.z, this._listener(), 0.7); }
         break;
       }
       case "boom": this._onBoom(m); break;
@@ -401,7 +450,7 @@ export class Game {
           const av = this.avatars.get(p[0]);
           if (av) {
             av.fire();
-            this.effects.muzzleFlash(av.muzzleWorld(tmpV));
+            this.effects.muzzleFlash(av.muzzleWorld(tmpV), FLASH_SIZE[w.class] || 0.5);
             playAt(`shoot_${wid}`, p[1], p[2], p[3], this._listener(), 1);
           }
         }
@@ -436,14 +485,15 @@ export class Game {
 
   _ensurePredictor(x, y, z) {
     const r = this.roster.get(this.myId);
-    const defs = this.data.defs(r ? r.spawnCls || r.cls : this.cls);
+    const defs = this.data.defs(r ? r.spawnCls || r.cls : this.cls, this._meleeId(r ? r.spawnMel || r.mel : this.mel));
     if (!this.predictor) this.predictor = new Phys.Predictor(this.world, this.C, defs);
     this.predictor.reset(x, y, z, defs);
   }
 
   _onSpawn(m) {
     const r = this.roster.get(m.id);
-    if (r) { r.spawnCls = m.cls; r.al = 1; if (m.tm !== undefined) r.tm = m.tm; }
+    const mel = this._meleeId(m.mel ?? (r && r.mel));
+    if (r) { r.spawnCls = m.cls; r.spawnMel = mel; r.al = 1; if (m.tm !== undefined) r.tm = m.tm; }
     if (m.id === this.myId) {
       if (m.tm !== undefined) this.myTeam = m.tm;
       this._ensurePredictor(m.x, m.y, m.z);
@@ -456,11 +506,14 @@ export class Game {
       this.corr.set(0, 0, 0);
       this.input.slot = 0;
       this.hp = this.data.rules.combat.maxHp; this.sh = 0;
-      this.vm.setWeapon(m.cls);
-      this._cb("onSpawn", { x: m.x, y: m.y, z: m.z, cls: m.cls });
+      this.stepOff = 0; this.lastRawY = undefined; this.camDip = 0; this.camDipV = 0; this.adsLin = 0;
+      this.vm.setMelee(mel);
+      this.vm.reloadCancel();
+      this.vm.setWeapon(m.cls, { draw: true });
+      this._cb("onSpawn", { x: m.x, y: m.y, z: m.z, cls: m.cls, mel });
     } else {
       const av = this.avatars.get(m.id);
-      if (av) { av.setWeapon(m.cls); av.deadUntilSpawn = false; }
+      if (av) { av.setWeapon(m.cls); av.setMelee(mel); av.setHealth(1, 0); av.deadUntilSpawn = false; }
     }
   }
 
@@ -471,28 +524,49 @@ export class Game {
 
   _onShot(m) {
     const av = this.avatars.get(m.id);
-    let ox = m.o[0], oy = m.o[1], oz = m.o[2];
+    const E = m.o;
+    let M = E;
+    const w = this.data.weapons.weapons[m.w];
     if (av && av.root.visible) {
       av.fire();
       const mz = av.muzzleWorld(tmpV);
-      ox = mz.x; oy = mz.y; oz = mz.z;
-      this.effects.muzzleFlash(mz);
+      M = [mz.x, mz.y, mz.z];
+      this.effects.muzzleFlash(mz, (w && FLASH_SIZE[w.class]) || 0.5);
     }
-    const w = this.data.weapons.weapons[m.w];
     const many = (m.e || []).length > 3;
     for (const e of m.e || []) {
-      const d = [e[0] - m.o[0], e[1] - m.o[1], e[2] - m.o[2]];
+      const d = [e[0] - E[0], e[1] - E[1], e[2] - E[2]];
       const L = Math.hypot(d[0], d[1], d[2]) || 1;
       d[0] /= L; d[1] /= L; d[2] /= L;
-      this.effects.tracer(ox, oy, oz, e[0], e[1], e[2], 0xffe08a, many ? 0.015 : 0.025);
+      // the tracer ends at the server's first solid hit (e), never beyond it; start clipped if the muzzle is in a wall
+      this.effects.shotTracer(E, M, e, 0xffe08a, many ? 0.015 : 0.025, false);
       if (e[3] === 1) this.effects.impactWorld(e[0], e[1], e[2], d);
-      else if (e[3] === 2) this.effects.impactEgg(e[0], e[1], e[2], d);
+      else if (e[3] === 2) {
+        const vav = this._victimAt(e);
+        this.effects.impactEgg(e[0], e[1], e[2], d, vav ? vav.shellColor : undefined, e[4] === 1);
+      }
     }
-    if (w) playAt(`shoot_${m.w}`, ox, oy, oz, this._listener(), 1);
+    if (w) {
+      playAt(`shoot_${m.w}`, M[0], M[1], M[2], this._listener(), 1);
+      // remote pump / bolt cycle after the shot (the local player's comes from the view-model beats)
+      const cyc = w.cycle === "pump" ? ["pump", 140] : w.cycle === "bolt" ? ["bolt", 440] : null;
+      if (cyc) setTimeout(() => { if (!this.stopped) playAt(cyc[0], M[0], M[1], M[2], this._listener(), 0.8, 30); }, cyc[1]);
+    }
+  }
+
+  /** Avatar nearest to a world point (for impact colours). */
+  _victimAt(p) {
+    let best = null, bd = 2.5;
+    for (const [id, st] of this.remote) {
+      const d = Math.hypot(st.x - p[0], st.y + 0.75 - p[1], st.z - p[2]);
+      if (d < bd) { bd = d; best = this.avatars.get(id); }
+    }
+    return best;
   }
 
   _onBoom(m) {
     this.effects.explosion(m.x, m.y, m.z, m.r || 4, this.R.camera.position);
+    for (const pp of this.predProj) if (pp.srv === m.id) pp.dead = 9;
     playAt("explode", m.x, m.y, m.z, this._listener(), 1.2, 70);
     const mesh = this.projMeshes.get(m.id);
     if (mesh) { this.R.scene.remove(mesh); this.projMeshes.delete(m.id); }
@@ -502,11 +576,14 @@ export class Game {
   }
 
   _onHit(m) {
+    const zone = m.z ?? (m.hs ? 1 : 2);
     if (m.a === this.myId && m.v !== this.myId) {
-      this.overlay.hitMarker(!!m.hs, m.hp <= 0);
-      play(m.hs ? "headshot" : "hit", { volume: 1, local: true });
-      this._cb("onHitConfirm", { victim: this._who(m.v), damage: m.d, headshot: !!m.hs, hp: m.hp, sh: m.sh, weapon: m.w });
+      this.overlay.hitMarker(zone, m.hp <= 0);
+      play(zone === 1 ? "headshot" : zone >= 3 ? "hit_limb" : "hit", { volume: 1, local: true });
+      this._cb("onHitConfirm", { victim: this._who(m.v), damage: m.d, headshot: !!m.hs, zone, hp: m.hp, sh: m.sh, weapon: m.w });
     }
+    const vav = this.avatars.get(m.v);
+    if (vav) vav.setHealth(m.hp / this.data.rules.combat.maxHp, m.sh / this.data.rules.combat.maxShield);
     if (m.v === this.myId) {
       this.hp = m.hp; this.sh = m.sh;
       if (m.a !== this.myId || m.w === this.data.weapons.grenade || this.data.weapons.weapons[m.w]?.kind === "projectile") {
@@ -514,7 +591,7 @@ export class Game {
       }
       this.camKick += 0.02;
       play("hit", { volume: 0.6, local: true, victim: true });
-      this._cb("onDamaged", { attacker: this._who(m.a), damage: m.d, headshot: !!m.hs, hp: m.hp, sh: m.sh, weapon: m.w, from: [m.ax, m.ay, m.az] });
+      this._cb("onDamaged", { attacker: this._who(m.a), damage: m.d, headshot: !!m.hs, zone, hp: m.hp, sh: m.sh, weapon: m.w, from: [m.ax, m.ay, m.az] });
     }
   }
 
@@ -523,7 +600,8 @@ export class Game {
     const killer = this.roster.get(m.k);
     if (victim) { victim.de = (victim.de || 0) + 1; victim.st = 0; victim.al = 0; }
     if (killer && m.k !== m.v) { killer.ki = (killer.ki || 0) + 1; killer.st = m.st; }
-    if (m.k === this.myId && m.v !== this.myId) { this.myStreak = m.st; play("kill", { volume: 1, local: true }); this.overlay.hitMarker(!!m.hs, true); }
+    const zone = m.z ?? (m.hs ? 1 : 0);
+    if (m.k === this.myId && m.v !== this.myId) { this.myStreak = m.st; play("kill", { volume: 1, local: true }); this.overlay.hitMarker(zone || 2, true); }
     // death effect
     let px, py, pz, color = "#f4efe4";
     if (m.v === this.myId) {
@@ -549,7 +627,7 @@ export class Game {
       this.input.slot = 0;
     }
     this._cb("onKillfeed", {
-      killer: this._who(m.k), victim: this._who(m.v), weapon: m.w, weaponName: this._weaponName(m.w), headshot: !!m.hs,
+      killer: this._who(m.k), victim: this._who(m.v), weapon: m.w, weaponName: this._weaponName(m.w), headshot: !!m.hs, zone,
       streak: m.st, suicide: m.k === m.v || m.k === 0, respawnSec: m.rs, meKiller: m.k === this.myId && m.v !== this.myId, meVictim: m.v === this.myId,
     });
   }
@@ -612,6 +690,8 @@ export class Game {
     if (this.predictor) this.predictor.pending.length = 0;
     this.unsent.length = 0;
     this.effects.clear();
+    for (const pp of this.predProj) this.R.scene.remove(pp.mesh);
+    this.predProj.length = 0;
     // rebuild avatars' team colours if the mode changed
     for (const r of this.roster.values()) this._rosterSet(r);
     this.loading = true;
@@ -749,6 +829,12 @@ export class Game {
     this.seq++;
     const smp = this.input.sample();
     let buttons = smp.buttons;
+    if (this._dbg) {
+      // debug/test input injection (window.__yo.press)
+      for (const k of Object.keys(this._dbg)) { if (this._dbg[k] > 0) { buttons |= +k; this._dbg[k]--; } }
+      if (this._dbgAds) buttons |= BTN.AIM;
+    }
+    if (this._dbgKeys && this._dbgKeys.n > 0) { smp.keys |= this._dbgKeys.k; this._dbgKeys.n--; }
     const live = this.match.state === "live";
     const P = this.predictor;
     // auto-switch to the sidearm when the primary is completely dry
@@ -766,12 +852,14 @@ export class Game {
     const acts = P.step(Phys.entryToInput(entry));
     this._localActs(acts, entry);
     if (pressedFire && mag0 === 0 && res0 === 0 && !acts.some((a) => a.a === "fire")) play("empty", { volume: 0.7, local: true });
-    // movement sounds
+    // movement sounds + presentation
     const ps = P.ps;
     if (wasGround && !ps.onGround && ps.vy > 1) play("jump", { volume: 0.6, local: true });
     if (!wasGround && ps.onGround && this.fallVy < -6) {
       play("land", { volume: Math.min(1, -this.fallVy / 18), local: true });
       this.vm.land(Math.min(1, -this.fallVy / 20));
+      // camera dip spring (k 140): initial velocity for a peak of min(0.12, |vy| * 0.005)
+      this.camDipV -= Math.min(0.12, -this.fallVy * 0.005) * Math.sqrt(140) * Math.E;
     }
     this.fallVy = ps.vy;
     if (ps.onGround) {
@@ -780,6 +868,15 @@ export class Game {
       this.stepDist += sp * this.DT;
       if (this.stepDist > 2.3) { this.stepDist = 0; if (sp > 2) play("footstep", { volume: 0.35, local: true }); }
     }
+    this._stepPredicted();
+  }
+
+  _wid(slot) {
+    return slot === 0 ? (this.roster.get(this.myId)?.spawnCls || this.cls) : this.data.weapons.secondary;
+  }
+  _myMelee() {
+    const r = this.roster.get(this.myId);
+    return this._meleeId(r ? r.spawnMel || r.mel : this.mel);
   }
 
   _localActs(acts, entry) {
@@ -787,7 +884,7 @@ export class Game {
     for (const a of acts) {
       if (a.a === "fire") {
         const w = P.defs.w[a.slot];
-        const wid = a.slot === 0 ? (this.roster.get(this.myId)?.spawnCls || this.cls) : this.data.weapons.secondary;
+        const wid = this._wid(a.slot);
         play(`shoot_${wid}`, { volume: 1, local: true });
         const ads = (entry[4] & BTN.AIM) !== 0;
         const rc = w.recoil || { pitch: 0.01, yaw: 0 };
@@ -796,40 +893,121 @@ export class Game {
         this.recoilBack += kick * 0.85;
         this.yaw += (Math.random() - 0.5) * 2 * rc.yaw;
         this.camKick += kick * 0.6;
-        this.vm.fire(Math.min(2, 0.6 + rc.pitch * 15));
+        this.vm.fire({ strength: Math.min(2, 0.6 + rc.pitch * 15), ads, lastRound: P.ws.mag[a.slot] === 0 });
         const cam = this.R.camera;
         cam.updateMatrixWorld();
-        const muzzle = this.vm.muzzleWorld(cam, new THREE.Vector3());
+        const muzzle = this.vm.muzzleWorld(cam, tmpV2);
         this.R.flashAt(muzzle.x, muzzle.y, muzzle.z, 2.5, 6, 0.05);
+        const [ex, ey, ez] = P.eye();
         if (w.kind === "hitscan") {
           const dirs = Phys.shotDirs(this.myId, entry[0], entry[2], a.pitch, a.spread, a.pellets);
-          const [ex, ey, ez] = P.eye();
           const targets = this._targets();
+          const E = [ex, ey, ez], M = [muzzle.x, muzzle.y, muzzle.z];
           for (const d of dirs) {
             const tr = Phys.traceShot(this.world, this.C, ex, ey, ez, d, w.range, targets, this.myId);
             const hx = ex + d[0] * tr.t, hy = ey + d[1] * tr.t, hz = ez + d[2] * tr.t;
-            this.effects.tracer(muzzle.x, muzzle.y, muzzle.z, hx, hy, hz, 0xfff0b0, dirs.length > 3 ? 0.012 : 0.02);
+            this.effects.shotTracer(E, M, [hx, hy, hz], 0xfff0b0, dirs.length > 3 ? 0.012 : 0.02, true);
             if (tr.kind === 1) this.effects.impactWorld(hx, hy, hz, d);
             else if (tr.kind === 2) {
               const av = this.avatars.get(tr.id);
               const tp = targets.find((t) => t.id === tr.id);
-              this.effects.impactEgg(hx, hy, hz, d, av ? av.shellColor : undefined, tp && hy >= tp.y + this.C.headshotY);
+              const zone = tp ? Phys.hitZone(this.C, hx, hy, hz, tp.x, tp.y, tp.z, d[0], d[2]) : 2;
+              this.effects.impactEgg(hx, hy, hz, d, av ? av.shellColor : undefined, zone === 1);
             }
           }
+        } else if (w.kind === "projectile" && w.projectile) {
+          const d = Phys.shotDirs(this.myId, entry[0], entry[2], a.pitch, a.spread, 1)[0];
+          this._predictProjectile(w.projectile, ex, ey, ez, d, 0.6, d[0] * w.projectile.speed, d[1] * w.projectile.speed, d[2] * w.projectile.speed, 0);
         }
       } else if (a.a === "melee") {
-        this.vm.melee();
-        play("shoot_rollingpin", { volume: 0.9, local: true });
+        const mel = this._myMelee();
+        this.vm.meleeStart(mel);
+        play(`shoot_${mel}`, { volume: 0.9, local: true });
+      } else if (a.a === "meleeHit") {
+        this._localMeleeHit(entry);
       } else if (a.a === "grenade") {
         this.vm.throwNade();
         play("grenade_throw", { volume: 0.9, local: true });
+        const G = P.defs.grenade, pd = G && G.projectile;
+        if (pd) {
+          const [ex, ey, ez] = P.eye();
+          const d = Phys.aimDir(entry[2], Math.max(-this.C.maxPitch, Math.min(this.C.maxPitch, entry[3])));
+          const ps = P.ps;
+          this._predictProjectile(pd, ex, ey, ez, d, 0.5, d[0] * G.throwSpeed + ps.vx * G.inheritVel,
+            d[1] * G.throwSpeed + G.throwUp + ps.vy * G.inheritVel, d[2] * G.throwSpeed + ps.vz * G.inheritVel, 0.08);
+        }
       } else if (a.a === "reload") {
-        play("reload", { volume: 0.8, local: true });
+        const slot = P.ws.slot, w = P.defs.w[slot];
+        this.vm.reloadStart({ empty: P.ws.mag[slot] === 0, mag: P.ws.mag[slot], magSize: w.magSize, reloadTime: w.reloadTime });
+        play("reload_start", { volume: 0.6, local: true });
       } else if (a.a === "switch") {
-        const wid = a.slot === 0 ? (this.roster.get(this.myId)?.spawnCls || this.cls) : this.data.weapons.secondary;
-        this.vm.setWeapon(wid);
+        const w = P.defs.w[a.slot];
+        this.vm.setWeapon(this._wid(a.slot), { draw: true, dur: w.switchTime });
         play("ui_click", { volume: 0.5, local: true });
       }
+    }
+  }
+
+  /** The local melee strike frame: a visual-only trace picks the reaction (miss / world / egg). */
+  _localMeleeHit(entry) {
+    const P = this.predictor;
+    const m = P.defs.melee;
+    const [ex, ey, ez] = P.eye();
+    const d = Phys.aimDir(entry[2], Math.max(-this.C.maxPitch, Math.min(this.C.maxPitch, entry[3])));
+    let t = Phys.raycastWorld(this.world, ex, ey, ez, d[0], d[1], d[2], m.range);
+    let kind = t >= 0 ? 1 : 0;
+    if (t < 0) t = m.range;
+    let victim = 0;
+    for (const p of this._targets()) {
+      const tp = Phys.rayEgg(this.C, ex, ey, ez, d[0], d[1], d[2], p.x, p.y, p.z, t, m.inflate || 0);
+      if (tp >= 0 && tp <= t) { t = tp; kind = 2; victim = p.id; }
+    }
+    this.vm.meleeHit(kind);
+    const mel = this._myMelee();
+    const hx = ex + d[0] * t, hy = ey + d[1] * t, hz = ez + d[2] * t;
+    if (kind === 2) {
+      play(`melee_hit_${mel}`, { volume: 1, local: true });
+      const av = this.avatars.get(victim);
+      this.effects.impactEgg(hx, hy, hz, d, av ? av.shellColor : undefined, false);
+      this.effects.shake = Math.max(this.effects.shake, mel === "pan" ? 0.35 : 0.15);
+    } else if (kind === 1) {
+      play("melee_thud", { volume: 0.8, local: true });
+      this.effects.impactWorld(hx, hy, hz, d);
+    }
+  }
+
+  /** Locally predicted rocket / quiche so your own shots appear at once (the server's copy is hidden). */
+  _predictProjectile(pd, ex, ey, ez, d, off, vx, vy, vz, delay) {
+    if (!this.world) return;
+    const t = Phys.raycastWorld(this.world, ex, ey, ez, d[0], d[1], d[2], off);
+    if (t >= 0) return; // explodes at once on the server: nothing to fly
+    const pr = Phys.newProjectile(-1, this.myId, pd, ex + d[0] * off, ey + d[1] * off, ez + d[2] * off, vx, vy, vz);
+    const mesh = pd.kind === 0 ? buildGrenade({ lod: "tp" }) : buildRocket({ lod: "tp" }).group;
+    if (pd.kind === 1) { const fl = mesh.getObjectByName("flame"); if (fl) fl.visible = true; }
+    mesh.visible = false;
+    this.R.scene.add(mesh);
+    this.predProj.push({ pr, kind: pd.kind, px: pr.x, py: pr.y, pz: pr.z, t0: performance.now(), showAt: performance.now() + delay * 1000,
+      srv: 0, dead: 0, exploded: false, mesh, spin: 0 });
+    if (this.predProj.length > 6) this._dropPred(0);
+  }
+
+  _dropPred(i) {
+    const pp = this.predProj[i];
+    this.R.scene.remove(pp.mesh);
+    this.predProj.splice(i, 1);
+  }
+
+  _stepPredicted() {
+    for (let i = this.predProj.length - 1; i >= 0; i--) {
+      const pp = this.predProj[i];
+      pp.px = pp.pr.x; pp.py = pp.pr.y; pp.pz = pp.pr.z;
+      if (!pp.exploded) {
+        const r = Phys.stepProjectile(this.world, pp.pr, this.DT);
+        if (r && r.explode) { pp.exploded = true; pp.pr.x = r.x; pp.pr.y = r.y; pp.pr.z = r.z; }
+      }
+      const age = performance.now() - pp.t0;
+      // gone: server boom seen, never claimed, or exploded locally and the server is quiet
+      if (pp.dead || (!pp.srv && age > 1200) || (pp.exploded && age > 4000) || age > 8000) this._dropPred(i);
     }
   }
 
@@ -853,15 +1031,52 @@ export class Game {
     const P = this.predictor;
     // local ads blend / weapon
     const w = this._curWeapon();
-    const aiming = this.alive && this.input.aimHeld() && P && P.ws.sw === 0 && P.ws.rl === 0;
-    this.adsT += ((aiming ? 1 : 0) - this.adsT) * Math.min(1, dt * 14);
-    // correction offset decays over ~100 ms
-    this.corr.multiplyScalar(Math.exp(-dt / 0.05));
+    const aiming = !!(this.alive && (this.input.aimHeld() || this._dbgAds) && P && P.ws.sw === 0 && P.ws.rl === 0 && P.ws.mt === 0);
+    if (this._debugHp != null) this.hp = this._debugHp;
+    // ADS: a smoothstep over the weapon's adsTime (shared by the camera fov and the view model)
+    const adsTime = (w && w.adsTime) || 0.2;
+    const tgt = aiming ? 1 : 0;
+    this.adsLin += Math.sign(tgt - this.adsLin) * Math.min(Math.abs(tgt - this.adsLin), dt / adsTime);
+    this.adsT = smoothstep(this.adsLin);
+    // reconciliation correction offset decays (~60 ms time constant)
+    this.corr.multiplyScalar(Math.exp(-dt / 0.06));
+    // landing dip spring (k 140, c 16)
+    {
+      let left = Math.min(dt, 0.1);
+      while (left > 1e-6) {
+        const h = Math.min(left, 1 / 240);
+        this.camDipV += (-140 * this.camDip - 16 * this.camDipV) * h;
+        this.camDip += this.camDipV * h;
+        left -= h;
+      }
+    }
+    // strafe roll
+    let rollT = 0;
+    if (P && this.alive && this.settings.viewBob !== false) {
+      const lat = P.ps.vx * Math.cos(this.yaw) - P.ps.vz * Math.sin(this.yaw);
+      rollT = -0.012 * lat / (this.C.moveSpeed || 6);
+    }
+    this.camRoll += (rollT - this.camRoll) * Math.min(1, dt * 8);
 
     if (this.alive && P) {
-      const p = P.lerpPos(alpha, [0, 0, 0]);
-      cam.position.set(p[0] + this.corr.x, p[1] + this.corr.y + this.C.eyeHeight, p[2] + this.corr.z);
-      cam.rotation.set(this.pitch + this.camKick, this.yaw, 0);
+      const p = P.lerpPos(alpha, this._lp || (this._lp = [0, 0, 0]));
+      // Stair smoothing on the rendered feet height: while grounded, a vertical jump of the drawn position
+      // (a 0.5 u step up/down, or a vertical reconciliation snap) becomes an offset that eases out over ~75 ms
+      // but never faster than 6.8 u/s, so running up a staircase is a smooth ramp instead of 0.5 u hops.
+      const rawY = p[1] + this.corr.y;
+      if (this.lastRawY !== undefined) {
+        // the part of this frame's vertical motion that velocity does not explain is a step (or a snap)
+        const disc = rawY - this.lastRawY - P.ps.vy * dt;
+        if (Math.abs(disc) > 0.02 && Math.abs(disc) <= this.C.stepHeight + 0.15) this.stepOff -= disc;
+      }
+      this.lastRawY = rawY;
+      const dec = this.stepOff * (1 - Math.exp(-dt / 0.1));
+      const lim = 5.8 * dt;
+      this.stepOff -= Math.max(-lim, Math.min(lim, dec));
+      this.stepOff = Math.max(-1, Math.min(1, this.stepOff));
+      if (Math.abs(this.stepOff) < 1e-4) this.stepOff = 0;
+      cam.position.set(p[0] + this.corr.x, rawY + this.C.eyeHeight + this.stepOff + this.camDip, p[2] + this.corr.z);
+      cam.rotation.set(this.pitch + this.camKick, this.yaw, this.camRoll);
     } else if (this.deathCam) {
       this._deathCamUpdate(dt);
     }
@@ -895,7 +1110,7 @@ export class Game {
       if (!alive) return;
       av.setWeapon(slot === 1 ? this.data.weapons.secondary : r.spawnCls || r.cls);
       av.setCarry((flags & FLAG.CARRY) !== 0, this._teamColor(r.tm === 1 ? 2 : 1));
-      av.update({ x, y, z, yaw, pitch: (flags & FLAG.RELOAD) ? pitch - 0.7 : pitch, flags }, dt, this.tAnim);
+      av.update({ x, y, z, yaw, pitch, flags, hp, sh }, dt, this.tAnim);
       if (av.plate) {
         const d = Math.hypot(x - cam.position.x, z - cam.position.z);
         av.plate.visible = this.settings.nameplates !== false && ((teams && r.tm === this.myTeam) || d < 28);
@@ -907,22 +1122,40 @@ export class Game {
     });
     for (const [id, av] of this.avatars) if (!seen.has(id)) { av.setVisible(false); this.remote.delete(id); }
 
-    // projectiles
-    const live = new Set();
-    this.snaps.sampleProjectiles(rt, (id, kind, owner, x, y, z) => {
+    // projectiles (rockets fly straight along their velocity; quiches tumble)
+    const live = this._liveProj || (this._liveProj = new Set());
+    live.clear();
+    const tNow = performance.now();
+    this.snaps.sampleProjectiles(rt, (id, kind, owner, x, y, z, vx, vy, vz) => {
       if (this.boomed && this.boomed.has(id)) return;
+      if (owner === this.myId) {
+        // hand our own shot over to the local prediction (same kind, spawned within the last second)
+        let pp = this.predProj.find((q) => q.srv === id);
+        if (!pp) { pp = this.predProj.find((q) => !q.srv && q.kind === kind && tNow - q.t0 < 1000); if (pp) pp.srv = id; }
+        if (pp) return; // (also after it hit a wall locally: the server boom follows)
+      }
       live.add(id);
       let m = this.projMeshes.get(id);
       if (!m) {
-        m = kind === 0 ? buildGrenade() : buildShell();
+        if (kind === 0) m = buildGrenade({ lod: "tp" });
+        else { m = buildRocket({ lod: "tp" }).group; const fl = m.getObjectByName("flame"); if (fl) fl.visible = true; }
+        m.userData.kind = kind;
         this.projMeshes.set(id, m);
         R.scene.add(m);
       }
       m.position.set(x, y, z);
-      m.rotation.x += dt * 9; m.rotation.z += dt * 5;
-      if (kind === 1 && Math.random() < 0.5) this.effects.puff(x, y, z, 1, "#fff2c0", 0.25, 0.4, 0.2, 0.05);
+      this._orientProj(m, kind, vx, vy, vz, dt);
+      if (kind === 1) this._rocketTrail(m, dt);
     });
     for (const [id, m] of this.projMeshes) if (!live.has(id)) { R.scene.remove(m); this.projMeshes.delete(id); }
+    for (const pp of this.predProj) {
+      const vis = !pp.exploded && tNow >= pp.showAt;
+      pp.mesh.visible = vis;
+      if (!vis) continue;
+      pp.mesh.position.set(pp.px + (pp.pr.x - pp.px) * alpha, pp.py + (pp.pr.y - pp.py) * alpha, pp.pz + (pp.pr.z - pp.pz) * alpha);
+      this._orientProj(pp.mesh, pp.kind, pp.pr.vx, pp.pr.vy, pp.pr.vz, dt);
+      if (pp.kind === 1) this._rocketTrail(pp.mesh, dt);
+    }
 
     // pickups
     for (let i = 0; i < this.pickups.length; i++) {
@@ -950,11 +1183,16 @@ export class Game {
     this.effects.update(dt, cam);
     const reloadFrac = P && P.ws.rl > 0 && w ? 1 - P.ws.rl / w.reloadTime : -1;
     const sw = P && P.ws.sw > 0 && w ? 1 - P.ws.sw / w.switchTime : -1;
-    const scoped = !!(w && w.adsFov && w.adsFov <= 36);
+    const scope = this._scopeType(w);
     this.vm.setVisible(this.alive && !!P);
     if (P) {
-      this.vm.update(dt, { speed: Math.hypot(P.ps.vx, P.ps.vz), onGround: P.ps.onGround, ads: aiming, reload: reloadFrac,
-        switching: sw, scoped, bob: this.settings.viewBob });
+      const vst = this._vst || (this._vst = {});
+      vst.speed = Math.hypot(P.ps.vx, P.ps.vz); vst.vx = P.ps.vx; vst.vz = P.ps.vz; vst.vy = P.ps.vy; vst.yaw = this.yaw;
+      vst.onGround = P.ps.onGround; vst.ads = aiming ? 1 : 0; vst.adsTime = adsTime; vst.adsBlend = this.adsT;
+      vst.reloadFrac = reloadFrac; vst.switchFrac = sw; vst.scoped = scope !== "none"; vst.bob = this.settings.viewBob !== false;
+      vst.mag = P.ws.mag[P.ws.slot]; vst.alive = this.alive;
+      if (this._freezeVm) vst.reloadFrac = -1;
+      this.vm.update(dt, vst);
     }
     R.update(dt);
     R.render(this.alive && !!P);
@@ -968,13 +1206,38 @@ export class Game {
     }
     const debug = this.settings.showDebug ? this._debugLines() : this.settings.showFps ? [`${this.fps} fps  ${Math.round(this.ping || 0)} ms`] : null;
     this.overlay.draw({
-      dt, crosshair: this.settings.crosshair !== false, color: this.settings.crosshairColor, spreadPx, ads: this.adsT, scoped,
+      dt, crosshair: this.settings.crosshair !== false, color: this.settings.crosshairColor, spreadPx, ads: this.adsT, scope,
       alive: this.alive, hp: this.hp, maxHp: this.data.rules.combat.maxHp, prot: this._myFlags() & FLAG.PROT, yaw: this.yaw,
       px: cam.position.x, pz: cam.position.z, debug, fury: this.fury > 0, hideCrosshair: this.match.state !== "live",
+      cracks: this.settings.shellCracks !== false, fov: cam.fov, reloading: !!(P && P.ws.rl > 0), loaded: !!(P && P.ws.mag[P.ws.slot] > 0),
     });
 
     this.hudT -= dt;
     if (this.hudT <= 0) { this.hudT = 1 / 15; this._cb("onHud", this.hudState()); }
+  }
+
+  _orientProj(m, kind, vx, vy, vz, dt) {
+    if (kind === 1) {
+      const L = Math.hypot(vx, vy, vz);
+      if (L > 1e-3) m.quaternion.setFromUnitVectors(FWD, tmpV3.set(vx / L, vy / L, vz / L));
+      const fl = m.children.find((c) => c.name === "flame");
+      if (fl) fl.scale.set(1, 1, 0.8 + Math.random() * 0.5);
+    } else {
+      m.rotation.x += dt * 9; m.rotation.z += dt * 5;
+    }
+  }
+
+  _rocketTrail(m, dt) {
+    // smoke from the tail (+Z of the rocket)
+    tmpV3.set(0, 0, 0.3).applyQuaternion(m.quaternion).add(m.position);
+    this.effects.rocketTrail(tmpV3.x, tmpV3.y, tmpV3.z, dt, m.userData);
+  }
+
+  /** Scope type of a weapon def: w.scope, else "sniper" for adsFov <= 36. */
+  _scopeType(w) {
+    if (!w) return "none";
+    if (w.scope) return w.scope;
+    return w.adsFov && w.adsFov <= 36 ? "sniper" : "none";
   }
 
   _deathCamUpdate(dt) {
@@ -994,8 +1257,8 @@ export class Game {
       if (t >= 0) { const f = Math.max(0.2, t - 0.3) / L; cx = ox + dx * f; cy = oy + dy * f; cz = oz + dz * f; }
     }
     cam.position.lerp(tmpV.set(cx, cy, cz), Math.min(1, dt * 6));
-    const m = new THREE.Matrix4().lookAt(cam.position, tmpV.set(tx, ty, tz), new THREE.Vector3(0, 1, 0));
-    const q = new THREE.Quaternion().setFromRotationMatrix(m);
+    const m = (this._dcM || (this._dcM = new THREE.Matrix4())).lookAt(cam.position, tmpV.set(tx, ty, tz), THREE.Object3D.DEFAULT_UP);
+    const q = tmpQ.setFromRotationMatrix(m);
     cam.quaternion.slerp(q, Math.min(1, dt * 5));
     cam.rotation.setFromQuaternion(cam.quaternion, "YXZ");
   }
@@ -1050,7 +1313,9 @@ export class Game {
       weapon: P ? Object.assign(weaponInfo(cur), { reloading: P.ws.rl > 0, reloadFrac: P.ws.rl > 0 ? 1 - P.ws.rl / wcur.reloadTime : 0, switching: P.ws.sw > 0 }) : null,
       primary: weaponInfo(0), secondary: weaponInfo(1),
       grenades: P ? P.ws.gren : 0, maxGrenades: W.weapons[W.grenade].maxCount,
-      ads: this.adsT > 0.5, scoped: !!(wcur && wcur.adsFov <= 36 && this.adsT > 0.9),
+      ads: this.adsT > 0.5, scoped: this._scopeType(wcur) !== "none" && this.adsT > 0.9,
+      melee: P ? { id: this._myMelee(), name: (W.weapons[this._myMelee()] || {}).name || "", ready: P.ws.mt === 0,
+        cooldown: P.defs.melee ? P.defs.melee.cooldown : 0, left: P.ws.mt } : null,
       spawnProtected: (myFlags & FLAG.PROT) !== 0, carrying: (myFlags & FLAG.CARRY) !== 0,
       respawnIn: this.alive ? 0 : this.respawnAt ? Math.max(0, (this.respawnAt + (this.holding ? RESPAWN_HOLD_MAX_MS : 0) - performance.now()) / 1000) : 0,
       respawnHeld: !this.alive && !!this.holding,
@@ -1064,6 +1329,51 @@ export class Game {
     };
   }
 
+  // ---------------------------------------------------------------- debug / test hooks
+
+  /** Hooks for screenshots and browser tests (dev.html?debug=1 exposes them as window.__yo). */
+  debugHooks() {
+    const g = this;
+    const press = (btn, ticks = 2) => { g._dbg = g._dbg || {}; g._dbg[btn] = ticks; };
+    return {
+      game: g, vm: g.vm, overlay: g.overlay, effects: g.effects, BTN,
+      /** Pose the view model at timeline name (reload|cycle|melee|grenade|switch|idle|fire) at frac; null unfreezes. */
+      freeze(name, frac = 0.5, opts = {}) {
+        if (!name || name === "idle") { g.vm.freeze(null); g._freezeVm = false; if (name === "idle") g.vm.freeze("idle", 0); return; }
+        g.vm.freezeEmpty = !!opts.empty;
+        g.vm.freeze(name, frac);
+        g._freezeVm = true;
+      },
+      setHp(hp) { g._debugHp = hp == null ? null : hp; if (hp != null) g.hp = hp; },
+      setAds(on) { g._dbgAds = !!on; if (!on) g._dbgAds = false; },
+      fire(ticks = 2) { press(BTN.FIRE, ticks); },
+      press,
+      /** Hold movement keys (KEY bits) for n ticks. */
+      walk(keys, ticks = 60) { g._dbgKeys = { k: keys, n: ticks }; },
+      KEY,
+      setWeapon(slot) { g.input.slot = slot; },
+      /** Teleport the local player (offline practice: the in-browser server too) and aim. */
+      camAt(x, y, z, yaw = g.yaw, pitch = 0) {
+        const P = g.predictor;
+        if (!P) return false;
+        const H = g.local && g.local.human;
+        for (const ps of [P.ps, P.prev, H && H.ps]) {
+          if (!ps) continue;
+          ps.x = x; ps.y = y; ps.z = z; ps.vx = ps.vy = ps.vz = 0;
+        }
+        P.pending.length = 0;
+        g.corr.set(0, 0, 0); g.stepOff = 0; g.lastRawY = undefined;
+        g.yaw = yaw; g.pitch = pitch; g.recoilBack = 0;
+        return true;
+      },
+      state() {
+        const P = g.predictor;
+        return { alive: g.alive, hp: g.hp, x: P && P.ps.x, y: P && P.ps.y, z: P && P.ps.z, yaw: g.yaw, pitch: g.pitch, camY: g.R.camera.position.y,
+          slot: P && P.ws.slot, mag: P && P.ws.mag[P.ws.slot], rl: P && P.ws.rl, ads: g.adsT, weapon: g.vm.currentId, melee: g.vm.meleeId };
+      },
+    };
+  }
+
   // ---------------------------------------------------------------- public helpers
 
   sendChat(text, teamOnly = false) {
@@ -1073,10 +1383,16 @@ export class Game {
   }
 
   /** hold: true asks the server to keep a dead player down (capped) while they choose; false releases. */
-  setLoadout({ cls, cosmetics, hold } = {}) {
+  setLoadout({ cls, mel, cosmetics, hold } = {}) {
     const msg = { t: "ld" };
     if (cls && this.data.weapons.primaries.includes(cls)) { msg.cls = cls; this.cls = cls; }
-    if (cosmetics) { this.cos = Object.assign({}, this.cos, cosmetics); msg.cos = this.cos; }
+    const ml = this.data.weapons.melees || [this.data.weapons.melee];
+    if (mel && ml.includes(mel)) { msg.mel = mel; this.mel = mel; }
+    if (cosmetics) {
+      this.cos = Object.assign({}, this.cos, cosmetics); msg.cos = this.cos;
+      const shell = this._shellCss();
+      if (shell) this.vm.setHandColor(shell);
+    }
     if (hold !== undefined) {
       this.holding = !!hold && !this.alive;
       msg.hold = this.holding ? 1 : 0;
@@ -1088,6 +1404,7 @@ export class Game {
     Object.assign(this.settings, s || {});
     this.R.applySettings(this.settings);
     this.input.setSettings(this.settings);
+    this.vm.setQuality(this.settings.quality);
     for (const av of this.avatars.values()) if (av.plate) av.plate.visible = this.settings.nameplates !== false;
   }
 
@@ -1114,6 +1431,9 @@ export class Game {
     this.input.dispose();
     this.overlay.dispose();
     this.effects.dispose();
+    for (const pp of this.predProj) this.R.scene.remove(pp.mesh);
+    this.predProj.length = 0;
+    this.vm.dispose();
     for (const av of this.avatars.values()) av.dispose();
     if (this.mapMesh) this.mapMesh.dispose();
     this.R.dispose();

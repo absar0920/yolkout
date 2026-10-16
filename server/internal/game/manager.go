@@ -356,6 +356,7 @@ func (m *Manager) goWriter(c *Client) {
 type hello struct {
 	name string
 	cls  string
+	mel  string
 	cos  Cos
 }
 
@@ -364,7 +365,11 @@ func helloFor(g *data.Game, h *inMsg) hello {
 	if h.Cls != nil && g.IsPrimary(*h.Cls) {
 		cls = *h.Cls
 	}
-	return hello{name: SanitizeName(h.Name), cls: cls, cos: applyCos(g, defaultCos(g), h.Cos)}
+	mel := g.Weapons.DefaultMelee
+	if h.Mel != nil && g.IsMelee(*h.Mel) {
+		mel = *h.Mel
+	}
+	return hello{name: SanitizeName(h.Name), cls: cls, mel: mel, cos: applyCos(g, defaultCos(g), h.Cos)}
 }
 
 func defaultCos(g *data.Game) Cos {

@@ -29,6 +29,7 @@ export const UI_DEFAULT_SETTINGS = {
   toggleAds: false,
   viewBob: true,
   nameplates: true,
+  shellCracks: true,
   rawInput: false,
   gamepadSensitivity: 1.0,
   volume: 0.8,
@@ -38,6 +39,7 @@ export const UI_DEFAULT_SETTINGS = {
 export const DEFAULT_PROFILE = {
   name: "",
   cls: "",
+  mel: "", // melee id (weapons.melees); "" = weapons.defaultMelee
   cos: null,
   mode: "ffa",
   map: "",

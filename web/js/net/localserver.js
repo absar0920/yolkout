@@ -13,7 +13,7 @@ const BOT_NAMES = ["Eggward", "Shelldon", "Yolanda", "Hardboil", "Sunnyside", "S
 
 // Longest a dead player choosing a loadout can delay their respawn (PROTOCOL.md, ld message).
 const RESPAWN_HOLD_MAX_SEC = 10;
-const F = { ALIVE: 1, GROUND: 2, AIM: 4, RELOAD: 8, PROT: 16, CARRY: 32, FURY: 64, SWITCH: 128, FIRED: 256 };
+const F = { ALIVE: 1, GROUND: 2, AIM: 4, RELOAD: 8, PROT: 16, CARRY: 32, FURY: 64, SWITCH: 128, FIRED: 256, THREW: 512 };
 
 const JITTER_BUFFER = 3; // inputs of backlog before the room consumes more than one per tick
 const OCT_KEYS = [Sim.KEY.FWD, Sim.KEY.FWD | Sim.KEY.LEFT, Sim.KEY.LEFT, Sim.KEY.BACK | Sim.KEY.LEFT, Sim.KEY.BACK,
@@ -120,8 +120,9 @@ export class LocalServer {
       }
       case "ld":
         if (m.hold === 0 || m.hold === 1) P.hold = m.hold === 1 && !P.alive;
-        if (!m.cls && !m.cos) break;
+        if (!m.cls && !m.cos && !m.mel) break;
         if (m.cls && this.d.weapons.weapons[m.cls] && this.d.weapons.primaries.includes(m.cls)) P.cls = m.cls;
+        if (m.mel && this._melees().includes(m.mel)) P.mel = m.mel;
         if (m.cos && typeof m.cos === "object") P.cos = this._cos(m.cos);
         this._emit({ t: "pu", p: this._roster(P) });
         break;
@@ -136,6 +137,9 @@ export class LocalServer {
     const lines = ["gg", "eggcellent", "you're toast", "sunny side up!", "nice shot", "cluck cluck"];
     setTimeout(() => { if (this.timer) { this._emit({ t: "chat", id: b.id, m: lines[Math.floor(Math.random() * lines.length)], tm: 0 }); } }, 600 + Math.random() * 1200);
   }
+
+  _melees() { const W = this.d.weapons; return W.melees || [W.melee]; }
+  _defMelee() { const W = this.d.weapons; return W.defaultMelee || W.melee; }
 
   _cos(c) {
     const cm = this.d.cosmetics, def = cm.defaults;
@@ -159,7 +163,8 @@ export class LocalServer {
     this.matchMap = this.wantMap || this.mode.maps[Math.floor(Math.random() * this.mode.maps.length)];
     this._setMap(this.matchMap);
     this._resetMatch();
-    const P = this._addPlayer(this._name(m.name), W.primaries.includes(m.cls) ? m.cls : W.defaultPrimary, this._cos(m.cos || {}), null);
+    const mel = this._melees().includes(m.mel) ? m.mel : this._defMelee();
+    const P = this._addPlayer(this._name(m.name), W.primaries.includes(m.cls) ? m.cls : W.defaultPrimary, mel, this._cos(m.cos || {}), null);
     this.human = P;
     this._emit({
       t: "welcome", v: 1, id: P.id,
@@ -174,7 +179,8 @@ export class LocalServer {
     for (let i = 0; i < this.botCount; i++) {
       const W2 = W.primaries;
       const name = names[i % names.length];
-      const b = this._addPlayer(name, W2[Math.floor(Math.random() * W2.length)], this._randCos(), this._newBot());
+      const ML = this._melees();
+      const b = this._addPlayer(name, W2[Math.floor(Math.random() * W2.length)], ML[Math.floor(Math.random() * ML.length)], this._randCos(), this._newBot());
       this._emit({ t: "join", p: this._roster(b) });
       this._spawn(b);
     }
@@ -203,7 +209,7 @@ export class LocalServer {
       aimErrY: 0, aimErrP: 0, errT: 0, seq: 0, react: 0, fireT: 0, nadeT: rnd(4, 10) };
   }
 
-  _addPlayer(name, cls, cos, bot) {
+  _addPlayer(name, cls, mel, cos, bot) {
     const id = this.nextId++;
     let tm = 0;
     if (this.mode.teams) {
@@ -211,19 +217,19 @@ export class LocalServer {
       for (const p of this.players.values()) { if (p.tm === 1) n1++; else if (p.tm === 2) n2++; }
       tm = n1 < n2 ? 1 : n2 < n1 ? 2 : this.ts[0] < this.ts[1] ? 1 : this.ts[1] < this.ts[0] ? 2 : 1;
     }
-    const defs = this.d.defs(cls);
+    const defs = this.d.defs(cls, mel);
     const P = {
-      id, n: name, tm, cls, spawnCls: cls, cos, sc: 0, ki: 0, de: 0, st: 0, alive: false,
+      id, n: name, tm, cls, spawnCls: cls, mel, spawnMel: mel, cos, sc: 0, ki: 0, de: 0, st: 0, alive: false,
       ps: Sim.newPlayerState(0, 0, 0), defs, ws: Sim.newWeaponState(defs.w[0], defs.w[1], defs.grenade),
       hp: 0, sh: 0, lastDmgK: -1e9, respawnAt: 0, protEnd: 0, furyEnd: 0, queue: [], ack: 0, lastSeq: 0,
-      yaw: 0, pitch: 0, slot: 0, aim: 0, fired: false, starve: 0, tokens: 6, bot, carry: 0, joinK: this.k,
+      yaw: 0, pitch: 0, slot: 0, aim: 0, fired: false, threw: false, starve: 0, tokens: 6, bot, carry: 0, joinK: this.k,
     };
     this.players.set(id, P);
     return P;
   }
 
   _roster(p) {
-    return { id: p.id, n: p.n, tm: p.tm, cls: p.cls, cos: p.cos, sc: p.sc, ki: p.ki, de: p.de, st: p.st, al: p.alive ? 1 : 0 };
+    return { id: p.id, n: p.n, tm: p.tm, cls: p.cls, mel: p.mel, cos: p.cos, sc: p.sc, ki: p.ki, de: p.de, st: p.st, al: p.alive ? 1 : 0 };
   }
 
   _setMap(id) {
@@ -277,7 +283,8 @@ export class LocalServer {
     const top = scored.slice(0, 3);
     const s = top[Math.floor(Math.random() * top.length)].s;
     P.spawnCls = P.cls;
-    P.defs = this.d.defs(P.cls);
+    P.spawnMel = P.mel;
+    P.defs = this.d.defs(P.cls, P.mel);
     P.ps = Sim.newPlayerState(s.pos[0], s.pos[1], s.pos[2]);
     P.ps.onGround = true;
     P.ws = Sim.newWeaponState(P.defs.w[0], P.defs.w[1], P.defs.grenade);
@@ -295,7 +302,7 @@ export class LocalServer {
         P.bot.role = n[0] > n[1] ? 1 : 0;
       }
     }
-    this._emit({ t: "spawn", id: P.id, x: s.pos[0], y: s.pos[1], z: s.pos[2], yaw: s.yaw, cls: P.cls, tm: P.tm });
+    this._emit({ t: "spawn", id: P.id, x: s.pos[0], y: s.pos[1], z: s.pos[2], yaw: s.yaw, cls: P.cls, mel: P.mel, tm: P.tm });
   }
 
   // ------------------------------------------------------------------ tick
@@ -376,7 +383,8 @@ export class LocalServer {
       if (P.furyEnd) fl |= F.FURY;
       if (P.ws.sw > 0) fl |= F.SWITCH;
       if (P.fired) fl |= F.FIRED;
-      P.fired = false;
+      if (P.threw) fl |= F.THREW;
+      P.fired = false; P.threw = false;
       p.push([P.id, Sim.q2(P.ps.x), Sim.q2(P.ps.y), Sim.q2(P.ps.z), Sim.q3(P.yaw), Sim.q3(P.pitch),
         P.alive ? Math.ceil(P.hp) : 0, P.sh, fl, P.ws.slot]);
     }
@@ -384,7 +392,7 @@ export class LocalServer {
       Math.round(r.vx * 10) / 10, Math.round(r.vy * 10) / 10, Math.round(r.vz * 10) / 10]);
     this._emit({
       t: "s", k: this.k, a: H.ack,
-      me: { x: H.ps.x, y: H.ps.y, z: H.ps.z, vx: H.ps.vx, vy: H.ps.vy, vz: H.ps.vz, g: H.ps.onGround ? 1 : 0,
+      me: { x: H.ps.x, y: H.ps.y, z: H.ps.z, vx: H.ps.vx, vy: H.ps.vy, vz: H.ps.vz, g: H.ps.onGround ? 1 : 0, cy: H.ps.coy | 0,
         al: H.alive ? 1 : 0, hp: H.alive ? Math.ceil(H.hp) : 0, sh: H.sh, ws: Sim.weaponStateToArray(H.ws),
         fu: H.furyEnd ? Math.max(0, (H.furyEnd - this.k) / this.rules.net.tickRate) : 0 },
       p, pr, pk: this._pk(), o: this._obj(),
@@ -409,8 +417,12 @@ export class LocalServer {
         const w = P.defs.w[a.slot];
         if (w.kind === "projectile") this._launch(P, inp, a, w);
         else this._hitscan(P, inp, a, w);
-      } else if (a.a === "melee") { P.protEnd = 0; this._melee(P, inp); }
-      else if (a.a === "grenade") { P.protEnd = 0; this._throw(P, inp); }
+      } else if (a.a === "melee") {
+        // the swing starts now; the hit resolves on "meleeHit" once the windup elapses
+        P.protEnd = 0;
+        if (P !== this.human) this._emit({ t: "melee", id: P.id, w: P.spawnMel });
+      } else if (a.a === "meleeHit") this._melee(P, inp);
+      else if (a.a === "grenade") { P.protEnd = 0; P.threw = true; this._throw(P, inp); }
     }
   }
 
@@ -454,26 +466,29 @@ export class LocalServer {
         const t = Sim.rayEgg(C, ox, oy, oz, d[0], d[1], d[2], T.x, T.y, T.z, bt);
         if (t >= 0 && t <= bt) { bt = t; best = T; }
       }
+      let zone = 0;
       if (best) {
         h = 2;
-        const hy = oy + d[1] * bt;
-        const hs = hy >= best.y + C.headshotY;
-        const dmg = Sim.falloffDamage(w, bt) * (hs ? w.headMul : 1) * this._dmgMul(P);
-        const acc = perVictim.get(best.o) || { d: 0, hs: false };
-        acc.d += dmg; acc.hs = acc.hs || hs;
+        zone = Sim.hitZone(C, ox + d[0] * bt, oy + d[1] * bt, oz + d[2] * bt, best.x, best.y, best.z, d[0], d[2]);
+        const dmg = Sim.falloffDamage(w, bt) * Sim.zoneMul(w, zone) * this._dmgMul(P);
+        const acc = perVictim.get(best.o) || { d: 0, z: zone };
+        acc.d += dmg; acc.z = Math.min(acc.z, zone);
         perVictim.set(best.o, acc);
       }
-      ends.push([Sim.q2(ox + d[0] * bt), Sim.q2(oy + d[1] * bt), Sim.q2(oz + d[2] * bt), h]);
+      const e = [Sim.q2(ox + d[0] * bt), Sim.q2(oy + d[1] * bt), Sim.q2(oz + d[2] * bt), h];
+      if (h === 2) e.push(zone);
+      ends.push(e);
     }
     if (P !== this.human) this._emit({ t: "shot", id: P.id, w: this._wid(P, a.slot), o: [Sim.q2(ox), Sim.q2(oy), Sim.q2(oz)], e: ends });
     for (const [V, acc] of perVictim) {
       if (V.alive && this.k < V.protEnd) continue;
-      this._damage(V, P, Math.max(1, Math.floor(acc.d + 0.5)), this._wid(P, a.slot), acc.hs ? 1 : 0, ox, oy, oz);
+      this._damage(V, P, Math.max(1, Math.floor(acc.d + 0.5)), this._wid(P, a.slot), acc.z, ox, oy, oz);
     }
   }
 
   _wid(P, slot) { return slot === 0 ? P.spawnCls : this.d.weapons.secondary; }
 
+  /** Resolve a melee hit (the windup has elapsed) with this input's aim and post-movement eye. */
   _melee(P, inp) {
     const C = this.C, M = P.defs.melee;
     const ox = P.ps.x, oy = P.ps.y + C.eyeHeight, oz = P.ps.z;
@@ -485,8 +500,19 @@ export class LocalServer {
       const t = Sim.rayEgg(C, ox, oy, oz, d[0], d[1], d[2], T.x, T.y, T.z, bt, M.inflate);
       if (t >= 0 && t <= bt) { bt = t; best = T; }
     }
-    if (P !== this.human) this._emit({ t: "melee", id: P.id });
-    if (best && !(this.k < best.o.protEnd)) this._damage(best.o, P, Math.floor(M.damage * this._dmgMul(P) + 0.5), this.d.weapons.melee, 0, ox, oy, oz);
+    if (!best || this.k < best.o.protEnd) return;
+    const V = best.o;
+    const zone = Sim.hitZone(C, ox + d[0] * bt, oy + d[1] * bt, oz + d[2] * bt, best.x, best.y, best.z, d[0], d[2]);
+    this._damage(V, P, Math.floor(M.damage * Sim.zoneMul(M, zone) * this._dmgMul(P) + 0.5), P.spawnMel || this._defMelee(), zone, ox, oy, oz);
+    const K = M.knockback || 0;
+    if (K > 0 && V.alive && !(this.k < V.protEnd)) {
+      let kx = V.ps.x - P.ps.x, kz = V.ps.z - P.ps.z;
+      let l = Math.sqrt(kx * kx + kz * kz);
+      if (l < 1e-6) { kx = -Math.sin(inp.yaw); kz = -Math.cos(inp.yaw); l = 1; }
+      kx /= l; kz /= l;
+      V.ps.vx += kx * K; V.ps.vz += kz * K; V.ps.vy += K * (this.rules.combat.meleeKnockUp ?? 0);
+      V.ps.onGround = false; V.ps.coy = 0;
+    }
   }
 
   _launch(P, inp, a, w) {
@@ -571,23 +597,26 @@ export class LocalServer {
       let nx = 0, ny = 1, nz = 0;
       if (d >= 1e-6) { nx = dx / d; ny = dy / d; nz = dz / d; }
       V.ps.vx += nx * meta.K * s; V.ps.vy += ny * meta.K * s + this.rules.combat.knockbackUp * s; V.ps.vz += nz * meta.K * s;
-      V.ps.onGround = false;
+      V.ps.onGround = false; V.ps.coy = 0;
       if (dmg > 0 && !(this.k < V.protEnd)) this._damage(V, O || V, dmg, meta.w, 0, x, y, z);
     }
   }
 
-  _damage(V, A, dmg, wid, hs, ax, ay, az) {
+  /** Apply damage (PROTOCOL.md 9.5). zone: 0 none (splash/fall), 1 head (= headshot), 2 body, 3 arm, 4 leg. */
+  _damage(V, A, dmg, wid, zone, ax, ay, az) {
     if (!V.alive || this.k < V.protEnd || this.state !== "live") return;
     const absorb = Math.min(V.sh, dmg);
     V.sh -= absorb; V.hp -= dmg - absorb;
     V.lastDmgK = this.k;
-    const msg = { t: "hit", a: A.id, v: V.id, d: dmg, hs, hp: Math.max(0, Math.ceil(V.hp)), sh: V.sh, w: wid, ax: Sim.q2(ax), ay: Sim.q2(ay), az: Sim.q2(az) };
+    const hs = zone === 1 ? 1 : 0;
+    const msg = { t: "hit", a: A.id, v: V.id, d: dmg, hs, z: zone, hp: Math.max(0, Math.ceil(V.hp)), sh: V.sh, w: wid, ax: Sim.q2(ax), ay: Sim.q2(ay), az: Sim.q2(az) };
     if (this.human && (A.id === this.human.id || V.id === this.human.id)) this._emit(msg);
     if (V.bot && A !== V) { V.bot.target = A.id; V.bot.react = Math.min(V.bot.react, 4); }
-    if (V.hp <= 0) this._kill(V, A, wid, hs);
+    if (V.hp <= 0) this._kill(V, A, wid, zone);
   }
 
-  _kill(V, A, wid, hs) {
+  _kill(V, A, wid, zone) {
+    const hs = zone === 1 ? 1 : 0;
     const pts = this.mode.points;
     V.alive = false; V.hp = 0; V.de++; V.st = 0;
     V.respawnAt = this.k + Math.round(this.mode.respawnSec * this.rules.net.tickRate);
@@ -600,7 +629,7 @@ export class LocalServer {
       if (wasCarrier && pts.carrierKill) A.sc += pts.carrierKill;
       if (this.mode.scoreUnit === "teamKills" && A.tm) this.ts[A.tm - 1]++;
     }
-    this._emit({ t: "kill", k: A ? A.id : 0, v: V.id, w: wid, hs, st, rs: this.mode.respawnSec });
+    this._emit({ t: "kill", k: A ? A.id : 0, v: V.id, w: wid, hs, z: zone, st, rs: this.mode.respawnSec });
     if (A && A !== V) {
       for (const s of this.rules.streaks) {
         if (A.st !== s.at) continue;
@@ -839,7 +868,7 @@ export class LocalServer {
         else if ((b.fireT -= dt) <= 0) { buttons |= Sim.BTN.FIRE; b.fireT = Math.max(w.fireInterval, 0.18) * rnd(1, 1.8); }
       }
       if (w.adsFov < 40 && hd > 12) buttons |= Sim.BTN.AIM;
-      if (hd < 2.2 && P.ws.mt === 0 && Math.random() < 0.2) buttons |= Sim.BTN.MELEE;
+      if (hd < P.defs.melee.range * 0.9 && P.ws.mt === 0 && Math.random() < 0.2) buttons |= Sim.BTN.MELEE;
       if ((b.nadeT -= dt) <= 0 && hd > 7 && hd < 22) { buttons |= Sim.BTN.GRENADE; b.nadeT = rnd(8, 16); }
       // switch to pistol when out of primary ammo
       if (P.ws.mag[0] === 0 && P.ws.res[0] === 0) P.slot = 1;

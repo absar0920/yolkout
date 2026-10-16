@@ -45,6 +45,8 @@ type Player struct {
 	Team   int
 	Cls    string // primary for the next spawn
 	CurCls string // primary of the current life
+	Mel    string // melee for the next spawn
+	CurMel string // melee of the current life
 	Cos    Cos
 	client *Client
 	bot    *botBrain
@@ -75,6 +77,7 @@ type Player struct {
 	tokens int
 	starve int
 	fired  bool
+	threw  bool // threw a grenade since the last snapshot (flag 512)
 	ping   int
 
 	hist []histEntry
@@ -261,7 +264,7 @@ func (r *Room) except(id int, msg []byte) {
 func (r *Room) sys(m string) { r.all(mustJSON(sysMsg{T: "sys", M: m})) }
 
 func (r *Room) roster(p *Player) rosterJSON {
-	rj := rosterJSON{ID: p.ID, N: p.Name, Tm: p.Team, Cls: p.Cls, Cos: p.Cos, Sc: p.Score, Ki: p.Kills, De: p.Deaths, St: p.Streak, Al: b2i(p.Alive)}
+	rj := rosterJSON{ID: p.ID, N: p.Name, Tm: p.Team, Cls: p.Cls, Mel: p.Mel, Cos: p.Cos, Sc: p.Score, Ki: p.Kills, De: p.Deaths, St: p.Streak, Al: b2i(p.Alive)}
 	if p.bot != nil {
 		rj.Bot = 1
 	}
@@ -470,7 +473,7 @@ func (r *Room) tick() {
 		// 4. kill-Y
 		for _, p := range r.players {
 			if p.Alive && p.PS.Y < r.killY {
-				r.kill(p, p.ID, "fall", false)
+				r.kill(p, p.ID, "fall", sim.ZoneNone)
 			}
 		}
 		// 5. pickups, objective, regen, fury, protection, respawns
@@ -550,11 +553,14 @@ func (r *Room) drainInboxes() {
 			if ld.hold != nil {
 				p.HoldRespawn = *ld.hold == 1 && !p.Alive
 			}
-			if ld.cls == nil && ld.cos == nil {
+			if ld.cls == nil && ld.cos == nil && ld.mel == nil {
 				continue
 			}
 			if ld.cls != nil && r.g.IsPrimary(*ld.cls) {
 				p.Cls = *ld.cls
+			}
+			if ld.mel != nil && r.g.IsMelee(*ld.mel) {
+				p.Mel = *ld.mel
 			}
 			p.Cos = applyCos(r.g, p.Cos, ld.cos)
 			r.all(mustJSON(rosterMsg{T: "pu", P: r.roster(p)}))
@@ -609,13 +615,16 @@ func (r *Room) processEvents() {
 	}
 }
 
-func (r *Room) newPlayer(name, cls string, cos Cos) *Player {
-	p := &Player{ID: r.nextPID, Name: name, Cls: cls, CurCls: cls, Cos: cos, hist: make([]histEntry, max(2, r.g.Rules.Net.HistoryTicks))}
+func (r *Room) newPlayer(name, cls, mel string, cos Cos) *Player {
+	if !r.g.IsMelee(mel) {
+		mel = r.g.Weapons.DefaultMelee
+	}
+	p := &Player{ID: r.nextPID, Name: name, Cls: cls, CurCls: cls, Mel: mel, CurMel: mel, Cos: cos, hist: make([]histEntry, max(2, r.g.Rules.Net.HistoryTicks))}
 	for i := range p.hist {
 		p.hist[i].tick = -1
 	}
 	r.nextPID++
-	p.Defs = sim.DefsFor(r.g.Weapons, cls)
+	p.Defs = sim.DefsFor(r.g.Weapons, cls, mel)
 	p.WS = sim.NewWeaponState(p.Defs)
 	return p
 }
@@ -632,7 +641,7 @@ func (r *Room) addHuman(c *Client, h hello) {
 	maxP := r.g.Rules.Net.MaxPlayersPerRoom
 	for len(r.players) >= maxP && r.removeOneBot() {
 	}
-	p := r.newPlayer(h.name, h.cls, h.cos)
+	p := r.newPlayer(h.name, h.cls, h.mel, h.cos)
 	p.client = c
 	c.mu.Lock()
 	c.lastInput = time.Now()
@@ -731,6 +740,7 @@ func (r *Room) sendSnapshots() {
 		b = appendInt(b, p.WS.Slot)
 		b = append(b, ']')
 		p.fired = false
+		p.threw = false
 	}
 	b = append(b, `],"pr":[`...)
 	for i, pr := range r.projs {
@@ -783,6 +793,8 @@ func (r *Room) sendSnapshots() {
 		m = appendFloat(m, p.PS.VZ)
 		m = append(m, `,"g":`...)
 		m = appendBool(m, p.PS.OnGround)
+		m = append(m, `,"cy":`...)
+		m = appendInt(m, p.PS.Coy)
 		m = append(m, `,"al":`...)
 		m = appendBool(m, p.Alive)
 		m = append(m, `,"hp":`...)
@@ -826,6 +838,7 @@ const (
 	flFury      = 64
 	flSwitch    = 128
 	flFired     = 256
+	flThrew     = 512
 )
 
 func (r *Room) flags(p *Player) int {
@@ -856,6 +869,9 @@ func (r *Room) flags(p *Player) int {
 	}
 	if p.fired {
 		f |= flFired
+	}
+	if p.threw {
+		f |= flThrew
 	}
 	return f
 }

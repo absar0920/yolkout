@@ -3,7 +3,7 @@
 import { $, h, clear, toast, debounce, fill } from "./dom.js";
 import { radioGroup } from "./widgets.js";
 import { eggSVG } from "./egg2d.js";
-import { gunIcon } from "./icons.js";
+import { gunIcon, meleeIcon } from "./icons.js";
 import { saveProfile, randomName, cleanName } from "./store.js";
 import { sfx } from "../audio.js";
 
@@ -116,8 +116,15 @@ export function initHome(app) {
   const wName = $("#home-weapon");
   function renderEgg() {
     clear(eggHost).appendChild(eggSVG(data.cosmetics, profile.cos, { title: "Your egg" }));
-    const w = data.weapons.weapons[profile.cls];
-    fill(wName, gunIcon(profile.cls, w && w.class), h("span", h("b", w ? w.name : ""), h("small", w ? w.class : "")));
+    const W = data.weapons;
+    const w = W.weapons[profile.cls];
+    const mid = (W.melees || [W.melee]).includes(profile.mel) ? profile.mel : (W.defaultMelee || W.melee);
+    const m = W.weapons[mid];
+    // the melee chip is one unit so it wraps onto its own line next to (or under) the primary
+    wName.style.flexWrap = "wrap";
+    fill(wName, gunIcon(profile.cls, w && w.class), h("span", h("b", w ? w.name : ""), h("small", w ? w.class : "")),
+      m ? h("div.home-melee", { title: m.desc || m.name, style: { display: "flex", alignItems: "center", gap: "10px" } },
+        meleeIcon(mid, { wide: true }), h("span", h("b", m.name), h("small", "Melee"))) : null);
   }
   renderEgg();
 

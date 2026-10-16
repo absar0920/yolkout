@@ -27,7 +27,7 @@ conn.onAny = (m) => {
       errs.push(Math.hypot(...d));
     } else if (m.me && !m.me.al) alive = false;
   } else if (m.t === "spawn" && m.id === myId) {
-    pred.reset(m.x, m.y, m.z, data.defs(m.cls)); alive = true;
+    pred.reset(m.x, m.y, m.z, data.defs(m.cls, m.mel)); alive = true;
   } else if (m.t === "kill" && m.v === myId) { deaths++; alive = false; }
   else if (m.t === "hit" && m.a === myId) hits++;
 };
@@ -47,7 +47,7 @@ await new Promise((res) => {
       seq++;
       if (Math.random() < 0.03) keys = [1, 5, 9, 2, 4, 8, 17, 1][Math.floor(Math.random() * 8)];
       yaw += (Math.random() - 0.5) * 0.1;
-      const buttons = Math.random() < 0.3 ? 1 : 0;
+      const buttons = (Math.random() < 0.3 ? 1 : 0) | (Math.random() < 0.02 ? 16 : 0); // fire + occasional melee (windup state mw)
       const e = Phys.makeInputEntry(seq, keys, yaw, 0, buttons, 0, clock.renderTick(now));
       unsent.push(e);
       if (pred && alive) pred.step(Phys.entryToInput(e));

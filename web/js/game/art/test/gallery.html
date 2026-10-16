@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Yolkout art gallery</title>
+<!-- Art gallery: ?view=guns|hands|melee|eggs|throwables|holding|props|hats|anim&lod=fp|tp&id=<gun id> -->
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js", "yolkout/sim": "/ref/sim.mjs" } }</script>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#cfe9f7;font:600 13px system-ui,sans-serif}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#labels{position:absolute;inset:0;pointer-events:none}
+.lbl{position:absolute;color:#2a2230;background:#ffffffc0;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.lbl small{font-weight:500;color:#5a5060;margin-left:6px}
+#title{position:absolute;left:12px;top:8px;font:800 20px system-ui;color:#2a2230}
+</style></head><body><canvas id="c"></canvas><div id="labels"></div><div id="title"></div>
+<script type="module" src="./gallery.js"></script>
+</body></html>

@@ -77,12 +77,43 @@ export function entryToInput(e) {
   return { seq: e[0], keys: e[1], yaw: e[2], pitch: e[3], buttons: e[4], slot: e[5] };
 }
 
+/**
+ * Validate the weapons.json contract the sim relies on (the Go server checks the same at boot):
+ * every id in `melees` is a melee with 0 <= windup < cooldown, `defaultMelee` is listed, and
+ * every hitscan gun has `zones` with 4 positive multipliers. Throws on a broken file.
+ */
+export function validateWeapons(weapons) {
+  const W = weapons.weapons || {};
+  const melees = Array.isArray(weapons.melees) && weapons.melees.length ? weapons.melees : [weapons.melee];
+  for (const id of melees) {
+    const m = W[id];
+    if (!m || m.kind !== "melee") throw new Error(`weapons.json: melees entry "${id}" is not a melee weapon`);
+    const wu = m.windup || 0;
+    if (!(wu >= 0 && wu < m.cooldown)) throw new Error(`weapons.json: melee "${id}" needs 0 <= windup < cooldown`);
+  }
+  const def = weapons.defaultMelee || weapons.melee;
+  if (!melees.includes(def)) throw new Error(`weapons.json: defaultMelee "${def}" is not in melees`);
+  for (const [id, w] of Object.entries(W)) {
+    if (w.kind !== "hitscan") continue;
+    const z = w.zones;
+    if (!z || !(z.head > 0 && z.body > 0 && z.arm > 0 && z.leg > 0)) throw new Error(`weapons.json: hitscan weapon "${id}" needs zones`);
+  }
+  return true;
+}
+
+/** Melee id for a requested one: listed ids pass, anything else becomes weapons.defaultMelee. */
+export function meleeId(weapons, id) {
+  const list = weapons.melees || [weapons.melee];
+  return list.includes(id) ? id : (weapons.defaultMelee || weapons.melee);
+}
+
 /** Load every shared data file the client and the sim need. fetchJson(path) -> Promise<object>. */
 export async function loadData(fetchJson) {
   const [rules, weapons, modes, cosmetics, mapIndex] = await Promise.all([
     fetchJson("rules.json"), fetchJson("weapons.json"), fetchJson("modes.json"),
     fetchJson("cosmetics.json"), fetchJson("maps/index.json"),
   ]);
+  validateWeapons(weapons);
   const C = Sim.makeConsts(rules);
   const maps = new Map();
   return {
@@ -94,12 +125,13 @@ export async function loadData(fetchJson) {
       }
       try { return await maps.get(id); } catch (e) { maps.delete(id); throw e; }
     },
-    defs(cls) { return Sim.defsFor(weapons, cls); },
+    /** Loadout defs for a primary and a melee (unknown or missing ids use the defaults). */
+    defs(cls, mel) { return Sim.defsFor(weapons, cls, mel); },
   };
 }
 
 function copyPs(ps) {
-  return { x: ps.x, y: ps.y, z: ps.z, vx: ps.vx, vy: ps.vy, vz: ps.vz, onGround: ps.onGround };
+  return { x: ps.x, y: ps.y, z: ps.z, vx: ps.vx, vy: ps.vy, vz: ps.vz, onGround: ps.onGround, coy: ps.coy | 0 };
 }
 
 /**
@@ -160,6 +192,7 @@ export class Predictor {
     ps.x = me.x; ps.y = me.y; ps.z = me.z;
     ps.vx = me.vx; ps.vy = me.vy; ps.vz = me.vz;
     ps.onGround = !!me.g;
+    ps.coy = me.cy | 0;
     if (Array.isArray(me.ws)) this.ws = Sim.weaponStateFromArray(me.ws);
     this.lastAck = ack;
     let drop = 0;

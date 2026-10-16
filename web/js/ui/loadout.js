@@ -1,11 +1,11 @@
-// Loadout & style screen: primary weapon with stat bars, shell colour / hat / stamp,
+// Loadout & style screen: primary weapon with stat bars, one melee, shell colour / hat / stamp,
 // live preview (2D SVG instantly, upgraded to the real 3D avatar when WebGL is available).
 
 import { $, h, clear, fill } from "./dom.js";
 import { radioGroup } from "./widgets.js";
 import { eggSVG, swatchSVG } from "./egg2d.js";
 import { gunIcon, grenadeIcon, meleeIcon } from "./icons.js";
-import { weaponStats } from "./data.js";
+import { weaponStats, meleeIds } from "./data.js";
 import { saveProfile } from "./store.js";
 import { sfx } from "../audio.js";
 
@@ -25,12 +25,18 @@ export function initLoadout(app) {
   const stats = weaponStats(W);
   const root = $("#loadout");
   const list = $("#weapon-list");
+  // "Melee (pick one)" picker under the primaries: the same widget and classes, so no extra CSS
+  const meleeHead = h("h3.kit-h", { id: "melee-h" }, "Melee (pick one)");
+  const meleeList = h("div.weapon-list", { id: "melee-list", "aria-labelledby": "melee-h" });
+  list.after(meleeHead, meleeList);
+  const MELEES = meleeIds(W);
+  const defMelee = W.defaultMelee || W.melee;
   const detail = $("#weapon-detail");
   const grid = $("#cos-grid");
   const stage = $("#preview-stage");
   const caption = $("#preview-caption");
   let tab = "color";
-  let draft = null; // {cls, cos}
+  let draft = null; // {cls, mel, cos}
   let onDone = null;
   let p3d = null;
   let p3dPending = false;
@@ -41,7 +47,7 @@ export function initLoadout(app) {
     const colName = (CM.colors.find((x) => x.id === draft.cos.color) || {}).name || "";
     const stName = (CM.stamps.find((x) => x.id === draft.cos.stamp) || {}).name || "";
     caption.textContent = [colName, hatName !== "No Hat" ? hatName : "", stName !== "Blank" ? stName : ""].filter(Boolean).join(" · ");
-    if (p3d) { p3d.set(draft.cos, draft.cls); return; }
+    if (p3d) { p3d.set(draft.cos, draft.cls, draft.mel); return; }
     const old = stage.querySelector(".egg2d");
     const svg = eggSVG(CM, draft.cos, { title: "Preview of your egg" });
     if (old) old.replaceWith(svg); else stage.appendChild(svg);
@@ -53,7 +59,7 @@ export function initLoadout(app) {
     stage.classList.add("loading3d");
     try {
       const { mountPreview3D } = await import("./preview3d.js");
-      const ctl = await mountPreview3D(stage, draft.cos, draft.cls);
+      const ctl = await mountPreview3D(stage, draft.cos, draft.cls, draft.mel);
       if (ctl && !root.hidden) {
         p3d = ctl;
         stage.classList.add("has3d");
@@ -76,6 +82,15 @@ export function initLoadout(app) {
     renderDetail();
   }
 
+  function renderMelees() {
+    radioGroup(meleeList, MELEES.map((id) => {
+      const m = W.weapons[id];
+      return { id, label: `${m.name}, melee, ${m.damage} damage, ${m.cooldown} second swing`, title: m.desc || m.name,
+        content: [meleeIcon(id, { wide: true }), h("span.w-text", h("b", m.name), h("small", `${m.damage} dmg · ${m.cooldown}s swing`))] };
+    }), draft.mel, (id) => { draft.mel = id; renderKit(); renderPreview(); }, { label: "Melee weapon (pick one)", className: "weapon-btn" });
+    meleeList.dataset.vertical = "1";
+  }
+
   function renderDetail() {
     const w = W.weapons[draft.cls];
     const st = stats[draft.cls];
@@ -90,7 +105,9 @@ export function initLoadout(app) {
     const extras = [];
     if (w.pellets > 1) extras.push(`${w.pellets} pellets`);
     if (w.kind === "projectile" && w.projectile) extras.push(`${w.projectile.splashRadius} m splash`);
-    extras.push(`${w.headMul}x headshot`);
+    const z = w.zones;
+    if (z) extras.push(`${z.head}x head · ${z.arm === z.leg ? z.arm : `${z.arm}/${z.leg}`}x limbs`);
+    else if (w.kind !== "projectile") extras.push(`${w.headMul}x headshot`);
     extras.push(`${w.reloadTime}s reload`);
     fill(detail, 
       h("div.wd-head", gunIcon(draft.cls, w.class), h("div", h("h3", w.name), h("p.wd-class", `${w.class} · ${mode}`))),
@@ -101,11 +118,12 @@ export function initLoadout(app) {
   }
 
   function renderKit() {
-    const sec = W.weapons[W.secondary], gr = W.weapons[W.grenade], me = W.weapons[W.melee];
+    const mid = draft && MELEES.includes(draft.mel) ? draft.mel : defMelee;
+    const sec = W.weapons[W.secondary], gr = W.weapons[W.grenade], me = W.weapons[mid];
     fill($("#kit-list"), 
       sec ? h("li", gunIcon(W.secondary, sec.class), h("span", h("b", sec.name), h("small", `${sec.class} · infinite spare mags`))) : null,
       gr ? h("li", grenadeIcon(), h("span", h("b", gr.name), h("small", `Grenade · start with ${gr.startCount}, carry ${gr.maxCount}`))) : null,
-      me ? h("li", meleeIcon(), h("span", h("b", me.name), h("small", `Melee · ${me.damage} damage`))) : null,
+      me ? h("li", meleeIcon(mid), h("span", h("b", me.name), h("small", `Melee · ${me.damage} damage, ${me.cooldown}s swing`))) : null,
     );
   }
 
@@ -156,6 +174,7 @@ export function initLoadout(app) {
   const finish = (save) => {
     if (save) {
       profile.cls = draft.cls;
+      profile.mel = draft.mel;
       profile.cos = Object.assign({}, draft.cos);
       saveProfile(profile);
       sfx.play("pickup");
@@ -179,13 +198,15 @@ export function initLoadout(app) {
     /** Open the screen. done(saved) runs on close. */
     open(done, { inGame = false, dead = false } = {}) {
       returnFocus = document.activeElement;
-      draft = { cls: profile.cls, cos: Object.assign({}, profile.cos) };
+      draft = { cls: profile.cls, mel: MELEES.includes(profile.mel) ? profile.mel : defMelee, cos: Object.assign({}, profile.cos) };
       onDone = done;
       root.classList.toggle("in-game", inGame);
       $("#loadout-note").textContent = dead ? "Your respawn is on hold (up to 10 s) while you choose. Save to drop back in with the new gun."
-        : inGame ? "Your new primary is issued at your next respawn. Style changes apply right away." : "";
+        : inGame ? "Your new primary and melee are issued at your next respawn. Style changes apply right away." : "";
       root.hidden = false;
       renderWeapons();
+      renderMelees();
+      renderKit();
       renderTab();
       renderPreview();
       $("#loadout-done").focus();

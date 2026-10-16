@@ -38,10 +38,14 @@ func (r *Room) simulate(p *Player, in *sim.Input, live bool) {
 			p.fired = true
 			r.fire(p, in, &a)
 		case sim.ActMelee:
+			// the swing starts: others see it now, the hit resolves on meleeHit after the windup
 			p.ProtUntil = 0
-			r.melee(p, in)
+			r.except(p.ID, mustJSON(meleeMsg{T: "melee", ID: p.ID, W: p.Defs.Melee.ID}))
+		case sim.ActMeleeHit:
+			r.meleeHit(p, in)
 		case sim.ActGrenade:
 			p.ProtUntil = 0
+			p.threw = true
 			r.throwGrenade(p, in)
 		}
 		if !p.Alive { // e.g. killed by own explosion
@@ -116,9 +120,9 @@ func (r *Room) posAt(p *Player, j int64) (histEntry, bool) {
 }
 
 type pelletDamage struct {
-	p   *Player
-	sum float64
-	hs  bool
+	p    *Player
+	sum  float64
+	zone int // best zone over this victim's pellets (smallest non-zero id: head > body > arm > leg)
 }
 
 func (r *Room) fire(p *Player, in *sim.Input, a *sim.Action) {
@@ -157,27 +161,23 @@ func (r *Room) fire(p *Player, in *sim.Input, a *sim.Action) {
 				best, bt = ti, th
 			}
 		}
-		h, end := 0, w.Range
+		h, end, zone := 0, w.Range, 0
 		if best >= 0 {
 			h, end = 2, bt
 			t := &targets[best]
-			hy := o[1] + d[1]*bt
-			head := hy >= t.y+r.C.HeadshotY
-			dmg := sim.FalloffDamage(w, bt)
-			if head {
-				dmg *= w.HeadMul
-			}
-			dmg *= p.dmgMul(r)
+			hx, hy, hz := o[0]+float64(d[0]*bt), o[1]+float64(d[1]*bt), o[2]+float64(d[2]*bt)
+			zone = sim.HitZone(r.C, hx, hy, hz, t.x, t.y, t.z, d[0], d[2])
+			dmg := float64(float64(sim.FalloffDamage(w, bt)*sim.ZoneMul(w, zone)) * p.dmgMul(r))
 			found := false
 			for k := range hits {
 				if hits[k].p == t.p {
 					hits[k].sum += dmg
-					hits[k].hs = hits[k].hs || head
+					hits[k].zone = min(hits[k].zone, zone)
 					found = true
 				}
 			}
 			if !found {
-				hits = append(hits, pelletDamage{p: t.p, sum: dmg, hs: head})
+				hits = append(hits, pelletDamage{p: t.p, sum: dmg, zone: zone})
 			}
 		} else if tw >= 0 {
 			h, end = 1, tw
@@ -193,6 +193,10 @@ func (r *Room) fire(p *Player, in *sim.Input, a *sim.Action) {
 		shot = appendQ(shot, o[2]+d[2]*end, 2)
 		shot = append(shot, ',')
 		shot = appendInt(shot, h)
+		if h == 2 {
+			shot = append(shot, ',')
+			shot = appendInt(shot, zone)
+		}
 		shot = append(shot, ']')
 	}
 	shot = append(shot, "]}"...)
@@ -206,33 +210,50 @@ func (r *Room) fire(p *Player, in *sim.Input, a *sim.Action) {
 		if dmg < 1 {
 			dmg = 1
 		}
-		r.damage(h.p, p.ID, dmg, h.hs, w.ID, o)
+		r.damage(h.p, p.ID, dmg, h.zone, w.ID, o)
 		if !p.Alive {
 			return
 		}
 	}
 }
 
-func (r *Room) melee(p *Player, in *sim.Input) {
+// meleeHit resolves a melee swing once its windup has elapsed, with this
+// input's aim, render tick and post-movement eye (PROTOCOL.md 9.3).
+func (r *Room) meleeHit(p *Player, in *sim.Input) {
 	m := p.Defs.Melee
 	o := p.eye(r.C)
 	d := sim.AimDir(in.Yaw, p.Pitch)
-	r.except(p.ID, mustJSON(idMsg{T: "melee", ID: p.ID}))
 	tw := sim.RaycastWorld(r.World, o[0], o[1], o[2], d[0], d[1], d[2], m.Range)
 	limit := m.Range
 	if tw >= 0 {
 		limit = tw
 	}
 	var victim *Player
+	var vt target
 	for _, t := range r.rewound(p, in.Rt) {
 		if th := sim.RayEgg(r.C, o[0], o[1], o[2], d[0], d[1], d[2], t.x, t.y, t.z, limit, m.Inflate); th >= 0 && th <= limit {
-			victim, limit = t.p, th
+			victim, vt, limit = t.p, t, th
 		}
 	}
 	if victim == nil || victim.protected(r.k) {
 		return
 	}
-	r.damage(victim, p.ID, int(math.Floor(m.Damage*p.dmgMul(r)+0.5)), false, m.ID, o)
+	hx, hy, hz := o[0]+float64(d[0]*limit), o[1]+float64(d[1]*limit), o[2]+float64(d[2]*limit)
+	zone := sim.HitZone(r.C, hx, hy, hz, vt.x, vt.y, vt.z, d[0], d[2])
+	r.damage(victim, p.ID, int(math.Floor(float64(float64(m.Damage*sim.ZoneMul(m, zone))*p.dmgMul(r))+0.5)), zone, m.ID, o)
+	if K := m.Knockback; K > 0 && victim.Alive && !victim.protected(r.k) {
+		kx, kz := victim.PS.X-p.PS.X, victim.PS.Z-p.PS.Z
+		l := math.Sqrt(kx*kx + kz*kz)
+		if l < 1e-6 {
+			kx, kz, l = -math.Sin(in.Yaw), -math.Cos(in.Yaw), 1
+		}
+		kx, kz = kx/l, kz/l
+		victim.PS.VX += kx * K
+		victim.PS.VZ += kz * K
+		victim.PS.VY += K * r.g.Rules.Combat.MeleeKnockUp
+		victim.PS.OnGround = false
+		victim.PS.Coy = 0
+	}
 }
 
 func (r *Room) throwGrenade(p *Player, in *sim.Input) {
@@ -359,6 +380,7 @@ func (r *Room) explode(pr *proj, E [3]float64) {
 		p.PS.VY += n[1]*pr.knockback*s + cb.KnockbackUp*s
 		p.PS.VZ += n[2] * pr.knockback * s
 		p.PS.OnGround = false
+		p.PS.Coy = 0
 		if dmg >= 1 {
 			hits = append(hits, dmgHit{p, dmg})
 		}
@@ -368,12 +390,13 @@ func (r *Room) explode(pr *proj, E [3]float64) {
 		if owner == nil {
 			killer = 0
 		}
-		r.damage(h.p, killer, h.dmg, false, pr.weapon, E)
+		r.damage(h.p, killer, h.dmg, sim.ZoneNone, pr.weapon, E)
 	}
 }
 
-// damage applies damage per PROTOCOL.md 9.5. src is the hit source position.
-func (r *Room) damage(v *Player, attacker int, dmg int, hs bool, weapon string, src [3]float64) {
+// damage applies damage per PROTOCOL.md 9.5. zone is the hit zone (0 for
+// splash and falls; 1 = head counts as a headshot). src is the hit source position.
+func (r *Room) damage(v *Player, attacker int, dmg int, zone int, weapon string, src [3]float64) {
 	if !v.Alive || v.protected(r.k) || r.state != stateLive {
 		return
 	}
@@ -381,24 +404,26 @@ func (r *Room) damage(v *Player, attacker int, dmg int, hs bool, weapon string, 
 	v.SH -= absorb
 	v.HP -= float64(dmg - absorb)
 	v.LastDamageTick = r.k
-	msg := mustJSON(hitMsg{T: "hit", A: attacker, V: v.ID, D: dmg, Hs: b2i(hs), Hp: v.wireHPAfter(), Sh: v.SH, W: weapon,
+	hs := zone == sim.ZoneHead
+	msg := mustJSON(hitMsg{T: "hit", A: attacker, V: v.ID, D: dmg, Hs: b2i(hs), Z: zone, Hp: v.wireHPAfter(), Sh: v.SH, W: weapon,
 		Ax: q(src[0], 2), Ay: q(src[1], 2), Az: q(src[2], 2)})
 	r.to(v, msg)
 	if attacker != v.ID {
 		r.to(r.byID(attacker), msg)
 	}
 	if v.HP <= 0 {
-		r.kill(v, attacker, weapon, hs)
+		r.kill(v, attacker, weapon, zone)
 	}
 }
 
 func (p *Player) wireHPAfter() int { return int(math.Max(0, math.Ceil(p.HP))) }
 
 // kill handles a death (PROTOCOL.md 9.5 and 10.4).
-func (r *Room) kill(v *Player, killerID int, weapon string, hs bool) {
+func (r *Room) kill(v *Player, killerID int, weapon string, zone int) {
 	if !v.Alive {
 		return
 	}
+	hs := zone == sim.ZoneHead
 	wasCarrier := v.Carrying != 0
 	v.Alive = false
 	v.HP = 0
@@ -431,7 +456,7 @@ func (r *Room) kill(v *Player, killerID int, weapon string, hs bool) {
 		}
 		st = killer.Streak
 	}
-	r.all(mustJSON(killMsg{T: "kill", K: killerID, V: v.ID, W: weapon, Hs: b2i(hs), St: st, Rs: r.Mode.RespawnSec}))
+	r.all(mustJSON(killMsg{T: "kill", K: killerID, V: v.ID, W: weapon, Hs: b2i(hs), Z: zone, St: st, Rs: r.Mode.RespawnSec}))
 	if killer != nil && killer != v {
 		r.streakRewards(killer)
 		if s := r.mgr.Stats; s != nil && killer.client != nil {

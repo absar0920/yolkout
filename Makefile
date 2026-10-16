@@ -21,7 +21,7 @@ define with_server
 	$(1)
 endef
 
-.PHONY: help run build test test-go test-js check-js bench bots bots-wander e2e deps fmt vet maps validate vectors docker clean
+.PHONY: help run build test test-go test-js check-js bench bots bots-wander e2e art-shots fp-shots deps fmt vet maps validate vectors docker clean
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -41,6 +41,7 @@ test-js: validate check-js ## map validation, JS reference vectors, client predi
 	node scripts/gen-testvectors.mjs --check
 	node --import ./web/js/engine/test/register.mjs web/js/engine/test/gen-physics-vectors.mjs --check
 	node --import ./web/js/engine/test/register.mjs web/js/engine/test/physics.test.mjs
+	@for f in web/js/game/test/*.test.mjs web/js/game/art/test/*.test.mjs; do [ -e "$$f" ] && echo "node $$f" && node "$$f" || [ ! -e "$$f" ] || exit 1; done
 
 check-js: ## node --check every JS module in web/, shared/ and scripts/
 	@n=0; for f in $$(find web shared scripts -name '*.js' -o -name '*.mjs' | grep -v -e node_modules -e '^web/vendor/'); do \
@@ -61,6 +62,12 @@ deps: ## install Playwright + Chromium for the browser e2e test (scripts/node_mo
 e2e: build ## browser end-to-end test (headless Chromium) against a fresh server; screenshots in scripts/screenshots/
 	@test -d scripts/node_modules/playwright || $(MAKE) deps
 	$(call with_server,node scripts/e2e.mjs --url $(TEST_URL) --server $(BIN))
+
+art-shots: ## render the art gallery (models, hands, cracks) to scripts/screenshots/art/ and check model budgets
+	node scripts/art-gallery.mjs
+
+fp-shots: ## render first-person view-model, scope, crack and wall-tracer shots to scripts/screenshots/fp/
+	node scripts/fp-shots.mjs
 
 fmt: ## format Go code
 	cd server && gofmt -s -w .

@@ -38,11 +38,14 @@ type Rules struct {
 		HitCenterY float64    `json:"hitCenterY"`
 		HitRadii   [3]float64 `json:"hitRadii"`
 		HeadshotY  float64    `json:"headshotY"`
+		LegY       float64    `json:"legY"`
+		ArmLat     float64    `json:"armLat"`
 		MaxPitch   float64    `json:"maxPitch"`
 	} `json:"player"`
 	Move struct {
 		MoveSpeed          float64 `json:"moveSpeed"`
 		GroundAccel        float64 `json:"groundAccel"`
+		GroundDecel        float64 `json:"groundDecel"`
 		AirAccel           float64 `json:"airAccel"`
 		Gravity            float64 `json:"gravity"`
 		JumpVelocity       float64 `json:"jumpVelocity"`
@@ -50,6 +53,7 @@ type Rules struct {
 		MaxHorizontalSpeed float64 `json:"maxHorizontalSpeed"`
 		StepHeight         float64 `json:"stepHeight"`
 		AdsMoveMul         float64 `json:"adsMoveMul"`
+		CoyoteTicks        int     `json:"coyoteTicks"`
 		Eps                float64 `json:"eps"`
 	} `json:"move"`
 	Combat struct {
@@ -62,6 +66,7 @@ type Rules struct {
 		FriendlyFire         bool    `json:"friendlyFire"`
 		MovingSpeedThreshold float64 `json:"movingSpeedThreshold"`
 		KnockbackUp          float64 `json:"knockbackUp"`
+		MeleeKnockUp         float64 `json:"meleeKnockUp"`
 	} `json:"combat"`
 	Pickups struct {
 		Radius float64               `json:"radius"`
@@ -107,6 +112,14 @@ type ProjectileDef struct {
 	Friction     float64 `json:"friction"`
 }
 
+// Zones are a gun's per-hit-zone damage multipliers (PROTOCOL.md 9.3).
+type Zones struct {
+	Head float64 `json:"head"`
+	Body float64 `json:"body"`
+	Arm  float64 `json:"arm"`
+	Leg  float64 `json:"leg"`
+}
+
 // Weapon is any entry of weapons.json "weapons" (gun, grenade or melee).
 type Weapon struct {
 	ID           string         `json:"-"`
@@ -125,6 +138,7 @@ type Weapon struct {
 	Range        float64        `json:"range"`
 	HeadMul      float64        `json:"headMul"`
 	Pellets      int            `json:"pellets"`
+	Zones        *Zones         `json:"zones"`
 	MagSize      int            `json:"magSize"`
 	Reserve      int            `json:"reserve"`
 	ReloadTime   float64        `json:"reloadTime"`
@@ -145,7 +159,9 @@ type Weapon struct {
 	ThrowUp    float64 `json:"throwUp"`
 	InheritVel float64 `json:"inheritVel"`
 	// melee
-	Inflate float64 `json:"inflate"`
+	Inflate   float64 `json:"inflate"`
+	Windup    float64 `json:"windup"`
+	Knockback float64 `json:"knockback"`
 }
 
 // Weapons mirrors shared/data/weapons.json.
@@ -154,6 +170,8 @@ type Weapons struct {
 	Secondary      string             `json:"secondary"`
 	Grenade        string             `json:"grenade"`
 	Melee          string             `json:"melee"`
+	Melees         []string           `json:"melees"`
+	DefaultMelee   string             `json:"defaultMelee"`
 	DefaultPrimary string             `json:"defaultPrimary"`
 	Weapons        map[string]*Weapon `json:"weapons"`
 }
@@ -299,6 +317,9 @@ func Load(dir string) (*Game, error) {
 	if g.Weapons.Weapons[g.Weapons.Grenade].Projectile == nil {
 		return nil, fmt.Errorf("weapons.json: grenade has no projectile block")
 	}
+	if err := validateWeapons(g.Weapons); err != nil {
+		return nil, err
+	}
 	for id, m := range g.Modes.Modes {
 		m.ID = id
 		if m.Points == nil {
@@ -360,8 +381,54 @@ func Load(dir string) (*Game, error) {
 	return g, nil
 }
 
+// validateWeapons checks the melee list and the hit-zone tables (V2 data contract).
+func validateWeapons(wj *Weapons) error {
+	if wj.DefaultMelee == "" {
+		wj.DefaultMelee = wj.Melee
+	}
+	if len(wj.Melees) == 0 {
+		wj.Melees = []string{wj.Melee}
+	}
+	inList := false
+	for _, id := range wj.Melees {
+		m := wj.Weapons[id]
+		if m == nil || m.Kind != "melee" {
+			return fmt.Errorf("weapons.json: melees entry %q is not a melee weapon", id)
+		}
+		if m.Windup < 0 || m.Windup >= m.Cooldown {
+			return fmt.Errorf("weapons.json: melee %q needs 0 <= windup < cooldown", id)
+		}
+		if id == wj.DefaultMelee {
+			inList = true
+		}
+	}
+	if !inList {
+		return fmt.Errorf("weapons.json: defaultMelee %q is not in melees", wj.DefaultMelee)
+	}
+	for id, w := range wj.Weapons {
+		if w.Kind != "hitscan" {
+			continue
+		}
+		z := w.Zones
+		if z == nil || !(z.Head > 0 && z.Body > 0 && z.Arm > 0 && z.Leg > 0) {
+			return fmt.Errorf("weapons.json: hitscan weapon %q needs zones with 4 positive multipliers", id)
+		}
+	}
+	return nil
+}
+
 // Weapon returns a weapon def by id (nil if unknown).
 func (g *Game) Weapon(id string) *Weapon { return g.Weapons.Weapons[id] }
+
+// IsMelee reports whether id is a selectable melee weapon.
+func (g *Game) IsMelee(id string) bool {
+	for _, m := range g.Weapons.Melees {
+		if m == id {
+			return true
+		}
+	}
+	return false
+}
 
 // IsPrimary reports whether id is a selectable primary.
 func (g *Game) IsPrimary(id string) bool {

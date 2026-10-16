@@ -31,7 +31,7 @@ func TestJoinWelcomeSpawnSnapshot(t *testing.T) {
 		t.Fatalf("expected one snapshot on tick 0: %v", ms)
 	}
 	me := s[0]["me"].(map[string]any)
-	if me["al"].(float64) != 1 || me["hp"].(float64) != 100 || len(me["ws"].([]any)) != 14 {
+	if me["al"].(float64) != 1 || me["hp"].(float64) != 100 || len(me["ws"].([]any)) != 15 {
 		t.Fatalf("me: %v", me)
 	}
 	pl := s[0]["p"].([]any)
@@ -133,12 +133,12 @@ func TestHitscanBodyDamage(t *testing.T) {
 	pitch := math.Atan2(0.75-1.3, 10)
 	h.input(c, 0, 0, pitch, sim.BtnFire|sim.BtnAim, 0)
 	h.r.tick()
-	if v.HP != 74 {
-		t.Fatalf("victim hp %v, want 74", v.HP)
+	if v.HP != 75 {
+		t.Fatalf("victim hp %v, want 75", v.HP)
 	}
 	ms := msgs(t, c)
 	hits := ofType(ms, "hit")
-	if len(hits) != 1 || hits[0]["d"].(float64) != 26 || hits[0]["hs"].(float64) != 0 || hits[0]["hp"].(float64) != 74 {
+	if len(hits) != 1 || hits[0]["d"].(float64) != 25 || hits[0]["hs"].(float64) != 0 || hits[0]["z"].(float64) != 2 || hits[0]["hp"].(float64) != 75 {
 		t.Fatalf("hit: %v", hits)
 	}
 	if len(ofType(ms, "shot")) != 0 {
@@ -151,7 +151,7 @@ func TestHitscanHeadshot(t *testing.T) {
 	pitch := math.Atan2(1.3-1.3, 10) // eye level: hits the top of the egg
 	h.input(c, 0, 0, pitch, sim.BtnFire|sim.BtnAim, 0)
 	h.r.tick()
-	want := 100 - math.Floor(48*1.75+0.5)
+	want := 100 - math.Floor(34*2.0+0.5)
 	if v.HP != want {
 		t.Fatalf("victim hp %v want %v", v.HP, want)
 	}
@@ -162,7 +162,7 @@ func TestShieldAbsorbsFirst(t *testing.T) {
 	v.SH = 10
 	h.input(c, 0, 0, math.Atan2(0.75-1.3, 10), sim.BtnFire|sim.BtnAim, 0)
 	h.r.tick()
-	if v.SH != 0 || v.HP != 84 {
+	if v.SH != 0 || v.HP != 85 {
 		t.Fatalf("sh %d hp %v", v.SH, v.HP)
 	}
 }
@@ -348,7 +348,15 @@ func TestMelee(t *testing.T) {
 	h, c, _, v := setupDuel(t, "ffa", "benedict")
 	h.place(v, 0, 0, 8.8)
 	h.ticks(20)
-	h.input(c, 0, 0, -0.3, sim.BtnMelee, 0)
+	h.input(c, 0, 0, -0.7, sim.BtnMelee, 0)
+	// rolling pin windup 0.1 s: the hit lands 6 inputs after the press
+	for i := 0; i < 6; i++ {
+		h.r.tick()
+		if v.HP != 100 {
+			t.Fatalf("melee hit before the windup elapsed (tick %d)", i)
+		}
+		h.input(c, 0, 0, -0.7, 0, 0)
+	}
 	h.r.tick()
 	if v.HP != 50 {
 		t.Fatalf("melee hp %v", v.HP)
@@ -425,7 +433,7 @@ func TestFFAMatchEndAndRestart(t *testing.T) {
 	next := end[0]["next"].(string)
 	// no damage during intermission
 	b.HP = 100
-	h.r.damage(b, a.ID, 50, false, "benedict", [3]float64{})
+	h.r.damage(b, a.ID, 50, sim.ZoneBody, "benedict", [3]float64{})
 	if b.HP != 100 {
 		t.Fatal("damage during intermission")
 	}
@@ -521,7 +529,7 @@ func TestNestRaidCapture(t *testing.T) {
 	h.r.tick()
 	h.place(a, 10, 0, 0)
 	h.r.tick()
-	h.r.kill(a, b.ID, "benedict", false)
+	h.r.kill(a, b.ID, "benedict", sim.ZoneBody)
 	if h.r.eggs[2].state != 2 || b.Score < pts["kill"]+pts["carrierKill"] {
 		t.Fatalf("drop: %+v score %d", h.r.eggs[2], b.Score)
 	}
@@ -691,7 +699,7 @@ func TestLoadoutHoldDelaysRespawn(t *testing.T) {
 		c.mu.Unlock()
 		h.r.tick()
 	}
-	h.r.kill(a, b.ID, "benedict", false)
+	h.r.kill(a, b.ID, "benedict", sim.ZoneBody)
 	hold(1, nil)
 	if !a.HoldRespawn {
 		t.Fatal("hold not set while dead")
@@ -707,9 +715,9 @@ func TestLoadoutHoldDelaysRespawn(t *testing.T) {
 	}
 
 	// the hold is capped
-	h.r.kill(a, b.ID, "benedict", false)
+	h.r.kill(a, b.ID, "benedict", sim.ZoneBody)
 	hold(1, nil)
-	h.ticks(int(h.r.RespawnAtDelta(a) + h.r.ticks(respawnHoldMaxSec)) + 2)
+	h.ticks(int(h.r.RespawnAtDelta(a)+h.r.ticks(respawnHoldMaxSec)) + 2)
 	if !a.Alive {
 		t.Fatal("hold should expire")
 	}

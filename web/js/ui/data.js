@@ -22,13 +22,19 @@ export function loadMenuData() {
   return cache;
 }
 
+/** The selectable melee ids (weapons.melees, falling back to the single v1 melee). */
+export function meleeIds(W) {
+  return (Array.isArray(W.melees) && W.melees.length ? W.melees : [W.melee]).filter((id) => W.weapons[id]);
+}
+
 /** Normalised 0..1 stats for the loadout stat bars, relative to the other primaries. */
 export function weaponStats(W) {
   const raw = {};
   for (const id of [...W.primaries, W.secondary]) {
     const w = W.weapons[id];
     if (!w) continue;
-    const perShot = w.damage * (w.pellets || 1);
+    // body-shot damage (zones.body multiplier; launchers have no zones)
+    const perShot = w.damage * ((w.zones && w.zones.body) || 1) * (w.pellets || 1);
     const interval = w.fireMode === "burst" && w.burstCount > 0
       ? (w.burstCount * w.fireInterval + w.burstDelay) / w.burstCount
       : w.fireInterval;

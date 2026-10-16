@@ -12,7 +12,9 @@
 // Names: shoot_<weaponId> for every weapon in shared/data/weapons.json (unknown ids fall back to
 // a generic rifle), reload, hit, headshot, kill, death_crack, explode, jump, land, footstep, pickup,
 // grenade_throw, empty, ui_click, plus UI extras: ui_hover, ui_back, streak, flag, chat, match_end,
-// countdown, hurt.
+// countdown, hurt; v2: shoot_<meleeId> swings, melee_hit_<meleeId>, melee_thud, hit_limb and the reload/cycle beats
+// reload_start, mag_out, mag_in, mag_slap, bolt, pump, shell_in, slide, rocket_load (played by the first-person
+// animation at the matching frame; gun shots no longer bake in a pump/bolt click).
 
 const MAX_VOICES = 40;
 
@@ -80,9 +82,9 @@ const click = (ctx, out, t, f = 3500, gain = 0.35, dur = 0.018) => nz(ctx, out, 
 // crack = bright transient, body = low sweep "thump", tail = rumbling noise, extra = mechanics
 const GUN = {
   benedict:  { crack: [2600, 0.06, 0.85], body: [170, 58, 0.10, 0.75], tail: [950, 0.20, 0.32] },
-  deviler:   { crack: [1700, 0.10, 1.00], body: [120, 38, 0.22, 1.00], tail: [620, 0.50, 0.60], pump: 0.42 },
+  deviler:   { crack: [1700, 0.10, 1.00], body: [120, 38, 0.22, 1.00], tail: [620, 0.50, 0.60] },
   poacher:   { crack: [3300, 0.04, 0.70], body: [230, 90, 0.06, 0.55], tail: [1500, 0.11, 0.24] },
-  piercer:   { crack: [2300, 0.09, 1.00], body: [95, 32, 0.28, 1.00], tail: [700, 0.95, 0.50], bolt: 0.55 },
+  piercer:   { crack: [2300, 0.09, 1.00], body: [95, 32, 0.28, 1.00], tail: [700, 0.95, 0.50] },
   frittata:  { crack: [2900, 0.05, 0.80], body: [190, 70, 0.08, 0.70], tail: [1150, 0.16, 0.30] },
   overeasy:  { crack: [2450, 0.07, 0.92], body: [140, 52, 0.15, 0.88], tail: [900, 0.38, 0.40] },
   coddler:   { crack: [3100, 0.05, 0.72], body: [270, 100, 0.06, 0.55], tail: [1600, 0.10, 0.24] },
@@ -133,6 +135,130 @@ R.shoot_rollingpin = {
   },
 };
 
+// melee swings: each kitchen tool has its own whoosh, and its own impact
+R.shoot_pan = {
+  len: 0.36,
+  fn(ctx, out, t) {
+    nz(ctx, out, t, { type: "bandpass", f: 260, f1: 1100, q: 1.4, dur: 0.3, gain: 0.6, attack: 0.09 });
+    osc(ctx, out, t + 0.02, { type: "triangle", f: 820, f1: 760, dur: 0.12, gain: 0.05 });
+  },
+};
+R.shoot_whisk = {
+  len: 0.16,
+  fn(ctx, out, t) {
+    nz(ctx, out, t, { type: "bandpass", f: 1400, f1: 3200, q: 2.2, dur: 0.12, gain: 0.45, attack: 0.025 });
+    for (let i = 0; i < 3; i++) click(ctx, out, t + 0.02 + i * 0.018, 5200 - i * 400, 0.06, 0.008);
+  },
+};
+R.shoot_spatula = {
+  len: 0.24,
+  fn(ctx, out, t) {
+    nz(ctx, out, t, { type: "bandpass", f: 600, f1: 1500, q: 1.1, dur: 0.2, gain: 0.5, attack: 0.04 });
+    osc(ctx, out, t + 0.06, { type: "sine", f: 300, f1: 520, dur: 0.1, gain: 0.08 });
+  },
+};
+R.melee_hit_rollingpin = {
+  len: 0.22,
+  fn(ctx, out, t) {
+    // hollow wooden BONK
+    osc(ctx, out, t, { type: "sine", f: 520, f1: 260, dur: 0.16, gain: 0.7 });
+    osc(ctx, out, t, { type: "triangle", f: 1040, f1: 700, dur: 0.06, gain: 0.25 });
+    click(ctx, out, t, 2200, 0.4, 0.02);
+  },
+};
+R.melee_hit_pan = {
+  len: 1.0,
+  fn(ctx, out, t) {
+    // cast-iron CLANG: inharmonic partials ringing out
+    click(ctx, out, t, 3000, 0.6, 0.02);
+    [[410, 0.5, 0.9], [1067, 0.3, 0.7], [1786, 0.18, 0.5], [2690, 0.1, 0.35], [3412, 0.06, 0.25]].forEach(([f, g, d]) =>
+      osc(ctx, out, t, { type: "sine", f, f1: f * 0.995, dur: d, gain: g, attack: 0.001 }));
+    nz(ctx, out, t, { type: "highpass", f: 3000, dur: 0.08, gain: 0.3 });
+  },
+};
+R.melee_hit_whisk = {
+  len: 0.12,
+  fn(ctx, out, t) {
+    for (let i = 0; i < 4; i++) click(ctx, out, t + i * 0.012, 4800 + i * 500, 0.3, 0.01);
+    osc(ctx, out, t, { type: "triangle", f: 2400, f1: 1800, dur: 0.05, gain: 0.12 });
+  },
+};
+R.melee_hit_spatula = {
+  len: 0.16,
+  fn(ctx, out, t) {
+    // flat SLAP
+    nz(ctx, out, t, { type: "bandpass", f: 1300, q: 0.9, dur: 0.06, gain: 0.8, attack: 0.001 });
+    osc(ctx, out, t, { type: "sine", f: 240, f1: 120, dur: 0.1, gain: 0.45 });
+  },
+};
+R.melee_thud = {
+  len: 0.14,
+  fn(ctx, out, t) {
+    nz(ctx, out, t, { type: "lowpass", f: 700, f1: 200, dur: 0.1, gain: 0.6 });
+    osc(ctx, out, t, { type: "sine", f: 160, f1: 70, dur: 0.1, gain: 0.5 });
+  },
+};
+
+// reload / cycle beats (emitted by the first-person animation at the matching frame)
+R.reload_start = {
+  len: 0.1,
+  fn(ctx, out, t) { nz(ctx, out, t, { type: "bandpass", f: 900, f1: 600, q: 1.2, dur: 0.08, gain: 0.16, attack: 0.01 }); },
+};
+R.mag_out = {
+  len: 0.14,
+  fn(ctx, out, t) {
+    click(ctx, out, t, 3000, 0.32, 0.02);
+    nz(ctx, out, t + 0.02, { type: "bandpass", f: 1100, f1: 700, q: 1.4, dur: 0.09, gain: 0.2 });
+  },
+};
+R.mag_in = {
+  len: 0.12,
+  fn(ctx, out, t) {
+    click(ctx, out, t, 1500, 0.5, 0.035);
+    osc(ctx, out, t, { type: "square", f: 520, f1: 380, dur: 0.035, gain: 0.08 });
+    click(ctx, out, t + 0.04, 2600, 0.3, 0.02);
+  },
+};
+R.mag_slap = {
+  len: 0.07,
+  fn(ctx, out, t) { nz(ctx, out, t, { type: "bandpass", f: 900, q: 1, dur: 0.05, gain: 0.35, attack: 0.001 }); click(ctx, out, t, 2000, 0.2, 0.015); },
+};
+R.bolt = {
+  len: 0.2,
+  fn(ctx, out, t) {
+    click(ctx, out, t, 2600, 0.3, 0.025);
+    nz(ctx, out, t + 0.01, { type: "highpass", f: 2400, dur: 0.06, gain: 0.15, attack: 0.01 });
+    click(ctx, out, t + 0.12, 1900, 0.36, 0.035);
+  },
+};
+R.pump = {
+  len: 0.24,
+  fn(ctx, out, t) {
+    click(ctx, out, t, 2200, 0.35, 0.03);
+    nz(ctx, out, t + 0.01, { type: "bandpass", f: 1500, q: 1.5, dur: 0.07, gain: 0.18 });
+    click(ctx, out, t + 0.14, 1700, 0.42, 0.04);
+  },
+};
+R.shell_in = {
+  len: 0.08,
+  fn(ctx, out, t) { click(ctx, out, t, 2300, 0.38, 0.025); osc(ctx, out, t, { type: "square", f: 700, f1: 520, dur: 0.02, gain: 0.05 }); },
+};
+R.slide = {
+  len: 0.16,
+  fn(ctx, out, t) {
+    nz(ctx, out, t, { type: "highpass", f: 2600, dur: 0.05, gain: 0.2, attack: 0.005 });
+    click(ctx, out, t + 0.06, 2100, 0.45, 0.03);
+  },
+};
+R.rocket_load = {
+  len: 0.3,
+  fn(ctx, out, t) {
+    nz(ctx, out, t, { type: "bandpass", f: 500, f1: 300, q: 1.2, dur: 0.12, gain: 0.3, attack: 0.03 });
+    osc(ctx, out, t + 0.1, { type: "sine", f: 180, f1: 110, dur: 0.12, gain: 0.5 });
+    click(ctx, out, t + 0.1, 1200, 0.5, 0.04);
+  },
+};
+
 // ------------------------------------------------------------------ feedback
 
 R.reload = {
@@ -151,6 +277,13 @@ R.hit = {
   fn(ctx, out, t) {
     osc(ctx, out, t, { type: "sine", f: 1450, f1: 1000, dur: 0.06, gain: 0.45 });
     click(ctx, out, t, 3800, 0.25, 0.02);
+  },
+};
+R.hit_limb = {
+  len: 0.07,
+  fn(ctx, out, t) {
+    osc(ctx, out, t, { type: "sine", f: 1150, f1: 900, dur: 0.045, gain: 0.3 });
+    click(ctx, out, t, 3200, 0.15, 0.015);
   },
 };
 R.hurt = {

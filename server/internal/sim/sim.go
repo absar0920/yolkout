@@ -32,6 +32,15 @@ const (
 	BtnMelee   = 16
 )
 
+// Hit zones (ZONE in sim.mjs). 0 = none (splash, fall).
+const (
+	ZoneNone = 0
+	ZoneHead = 1
+	ZoneBody = 2
+	ZoneArm  = 3
+	ZoneLeg  = 4
+)
+
 // Consts is the flattened constant bag (makeConsts in sim.mjs).
 type Consts struct {
 	Dt                   float64
@@ -41,9 +50,12 @@ type Consts struct {
 	HitCenterY           float64
 	HitRadii             [3]float64
 	HeadshotY            float64
+	LegY                 float64
+	ArmLat               float64
 	MaxPitch             float64
 	MoveSpeed            float64
 	GroundAccel          float64
+	GroundDecel          float64
 	AirAccel             float64
 	Gravity              float64
 	JumpVelocity         float64
@@ -53,6 +65,7 @@ type Consts struct {
 	AdsMoveMul           float64
 	Eps                  float64
 	MovingSpeedThreshold float64
+	CoyoteTicks          int
 }
 
 // MakeConsts flattens rules.json.
@@ -61,10 +74,11 @@ func MakeConsts(r *data.Rules) *Consts {
 		Dt:        1 / float64(r.Net.TickRate),
 		HalfWidth: r.Player.HalfWidth, Height: r.Player.Height, EyeHeight: r.Player.EyeHeight,
 		HitCenterY: r.Player.HitCenterY, HitRadii: r.Player.HitRadii, HeadshotY: r.Player.HeadshotY, MaxPitch: r.Player.MaxPitch,
-		MoveSpeed: r.Move.MoveSpeed, GroundAccel: r.Move.GroundAccel, AirAccel: r.Move.AirAccel,
+		LegY: r.Player.LegY, ArmLat: r.Player.ArmLat,
+		MoveSpeed: r.Move.MoveSpeed, GroundAccel: r.Move.GroundAccel, GroundDecel: r.Move.GroundDecel, AirAccel: r.Move.AirAccel,
 		Gravity: r.Move.Gravity, JumpVelocity: r.Move.JumpVelocity, TerminalVelocity: r.Move.TerminalVelocity,
 		MaxHorizontalSpeed: r.Move.MaxHorizontalSpeed, StepHeight: r.Move.StepHeight, AdsMoveMul: r.Move.AdsMoveMul,
-		Eps: r.Move.Eps, MovingSpeedThreshold: r.Combat.MovingSpeedThreshold,
+		Eps: r.Move.Eps, MovingSpeedThreshold: r.Combat.MovingSpeedThreshold, CoyoteTicks: r.Move.CoyoteTicks,
 	}
 }
 
@@ -104,11 +118,13 @@ func MakeWorld(m *data.Map) *World {
 
 // ---------------------------------------------------------------- movement
 
-// PlayerState is the physics state of one player.
+// PlayerState is the physics state of one player. Coy is the coyote-time
+// counter: a jump is still allowed while Coy > 0 after leaving the ground.
 type PlayerState struct {
 	X, Y, Z    float64
 	VX, VY, VZ float64
 	OnGround   bool
+	Coy        int
 }
 
 // ClipAxis returns the largest movement along axis (0=x,1=y,2=z) not
@@ -193,7 +209,11 @@ func StepMove(w *World, C *Consts, st *PlayerState, keys int, yaw, speedMul floa
 	speed := mul(C.MoveSpeed, speedMul)
 
 	if st.OnGround {
-		k := math.Min(1, mul(C.GroundAccel, dt))
+		acc := C.GroundDecel
+		if length > 0 {
+			acc = C.GroundAccel
+		}
+		k := math.Min(1, mul(acc, dt))
 		st.VX += mul(mul(wx, speed)-st.VX, k)
 		st.VZ += mul(mul(wz, speed)-st.VZ, k)
 	} else if length > 0 {
@@ -208,9 +228,10 @@ func StepMove(w *World, C *Consts, st *PlayerState, keys int, yaw, speedMul floa
 		st.VZ = mul(st.VZ, f)
 	}
 
-	if keys&KeyJump != 0 && st.OnGround {
+	if keys&KeyJump != 0 && (st.OnGround || st.Coy > 0) {
 		st.VY = C.JumpVelocity
 		st.OnGround = false
+		st.Coy = 0
 	}
 
 	st.VY -= mul(C.Gravity, dt)
@@ -268,6 +289,14 @@ func StepMove(w *World, C *Consts, st *PlayerState, keys int, yaw, speedMul floa
 		}
 	} else {
 		st.OnGround = false
+	}
+	switch {
+	case st.OnGround:
+		st.Coy = C.CoyoteTicks
+	case st.Coy > 0:
+		st.Coy--
+	default:
+		st.Coy = 0
 	}
 }
 
@@ -394,6 +423,48 @@ func RayEgg(C *Consts, ox, oy, oz, dx, dy, dz, px, py, pz, tmax, inflate float64
 	return t
 }
 
+// HitZone is the zone of a hit at (hx,hy,hz) on the egg standing at feet
+// (px,py,pz), for a ray whose direction has horizontal part (dx,dz).
+func HitZone(C *Consts, hx, hy, hz, px, py, pz, dx, dz float64) int {
+	ly := hy - py
+	if ly >= C.HeadshotY {
+		return ZoneHead
+	}
+	if ly < C.LegY {
+		return ZoneLeg
+	}
+	hl := math.Sqrt(mul(dx, dx) + mul(dz, dz))
+	if hl > 1e-6 {
+		lat := math.Abs(mul(hx-px, -dz/hl)+mul(hz-pz, dx/hl)) / C.HitRadii[0]
+		if lat >= C.ArmLat {
+			return ZoneArm
+		}
+	}
+	return ZoneBody
+}
+
+// ZoneMul is the damage multiplier of a zone for w (melee: head bonus only).
+func ZoneMul(w *data.Weapon, zone int) float64 {
+	z := w.Zones
+	if z == nil {
+		if zone == ZoneHead && w.HeadMul != 0 { // a missing headMul (JSON null/absent) means 1, as in sim.mjs
+			return w.HeadMul
+		}
+		return 1
+	}
+	switch zone {
+	case ZoneHead:
+		return z.Head
+	case ZoneBody:
+		return z.Body
+	case ZoneArm:
+		return z.Arm
+	case ZoneLeg:
+		return z.Leg
+	}
+	return 1
+}
+
 // FalloffDamage is one pellet's damage at distance d.
 func FalloffDamage(w *data.Weapon, d float64) float64 {
 	if d <= w.FalloffStart || w.FalloffEnd <= w.FalloffStart {
@@ -423,13 +494,27 @@ type Defs struct {
 	Melee   *data.Weapon
 }
 
-// DefsFor resolves defs for a primary id (unknown ids use the default).
-func DefsFor(wj *data.Weapons, primaryID string) *Defs {
+// DefsFor resolves defs for a primary and a melee id (unknown ids use the defaults).
+func DefsFor(wj *data.Weapons, primaryID, meleeID string) *Defs {
 	p := wj.Weapons[primaryID]
 	if p == nil {
 		p = wj.Weapons[wj.DefaultPrimary]
 	}
-	return &Defs{W: [2]*data.Weapon{p, wj.Weapons[wj.Secondary]}, Grenade: wj.Weapons[wj.Grenade], Melee: wj.Weapons[wj.Melee]}
+	var ml *data.Weapon
+	for _, id := range wj.Melees {
+		if id == meleeID {
+			ml = wj.Weapons[id]
+			break
+		}
+	}
+	if ml == nil {
+		def := wj.DefaultMelee
+		if def == "" {
+			def = wj.Melee
+		}
+		ml = wj.Weapons[def]
+	}
+	return &Defs{W: [2]*data.Weapon{p, wj.Weapons[wj.Secondary]}, Grenade: wj.Weapons[wj.Grenade], Melee: ml}
 }
 
 // WeaponState mirrors the JS weapon state object.
@@ -446,6 +531,7 @@ type WeaponState struct {
 	Mt    float64
 	Gt    float64
 	Pb    int
+	Mw    float64 // melee windup left
 }
 
 // NewWeaponState returns a fresh loadout state.
@@ -453,10 +539,10 @@ func NewWeaponState(d *Defs) WeaponState {
 	return WeaponState{Mag: [2]int{d.W[0].MagSize, d.W[1].MagSize}, Res: [2]int{d.W[0].Reserve, d.W[1].Reserve}, Gren: d.Grenade.StartCount}
 }
 
-// Array returns the wire order [slot,mag0,mag1,res0,res1,gren,cd,rl,sw,bl,bloom,mt,gt,pb].
-func (ws *WeaponState) Array() [14]float64 {
-	return [14]float64{float64(ws.Slot), float64(ws.Mag[0]), float64(ws.Mag[1]), float64(ws.Res[0]), float64(ws.Res[1]), float64(ws.Gren),
-		ws.Cd, ws.Rl, ws.Sw, float64(ws.Bl), ws.Bloom, ws.Mt, ws.Gt, float64(ws.Pb)}
+// Array returns the wire order [slot,mag0,mag1,res0,res1,gren,cd,rl,sw,bl,bloom,mt,gt,pb,mw].
+func (ws *WeaponState) Array() [15]float64 {
+	return [15]float64{float64(ws.Slot), float64(ws.Mag[0]), float64(ws.Mag[1]), float64(ws.Res[0]), float64(ws.Res[1]), float64(ws.Gren),
+		ws.Cd, ws.Rl, ws.Sw, float64(ws.Bl), ws.Bloom, ws.Mt, ws.Gt, float64(ws.Pb), ws.Mw}
 }
 
 // Action kinds.
@@ -466,6 +552,7 @@ const (
 	ActGrenade
 	ActReload
 	ActSwitch
+	ActMeleeHit
 )
 
 // ActName returns the test-vector name of an action kind.
@@ -481,6 +568,8 @@ func ActName(a int) string {
 		return "reload"
 	case ActSwitch:
 		return "switch"
+	case ActMeleeHit:
+		return "meleeHit"
 	}
 	return "?"
 }
@@ -512,6 +601,13 @@ func WeaponTick(out []Action, ws *WeaponState, buttons, slotReq int, defs *Defs,
 	ws.Cd -= dt
 	ws.Mt = math.Max(0, ws.Mt-dt)
 	ws.Gt = math.Max(0, ws.Gt-dt)
+	if ws.Mw > 0 {
+		ws.Mw -= dt
+		if ws.Mw <= 1e-9 {
+			ws.Mw = 0
+			out = append(out, Action{A: ActMeleeHit})
+		}
+	}
 
 	if (slotReq == 0 || slotReq == 1) && slotReq != ws.Slot {
 		ws.Slot = slotReq
@@ -540,9 +636,14 @@ func WeaponTick(out []Action, ws *WeaponState, buttons, slotReq int, defs *Defs,
 	}
 	if pressed&BtnMelee != 0 && ws.Mt == 0 && ws.Sw == 0 {
 		ws.Mt = defs.Melee.Cooldown
+		ws.Mw = defs.Melee.Windup
 		ws.Rl = 0
 		ws.Bl = 0
 		out = append(out, Action{A: ActMelee})
+		if ws.Mw <= 1e-9 {
+			ws.Mw = 0
+			out = append(out, Action{A: ActMeleeHit})
+		}
 	}
 	if pressed&BtnGrenade != 0 && ws.Gt == 0 && ws.Gren > 0 && ws.Sw == 0 {
 		ws.Gren--

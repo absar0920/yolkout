@@ -23,10 +23,11 @@ func TestClientPredictionVectors(t *testing.T) {
 			Name    string
 			Map     string
 			Primary string
+			Melee   string
 			Start   [3]float64
 			Wire    [][6]float64
-			Expect  [][7]float64
-			FinalWs [14]float64
+			Expect  [][8]float64
+			FinalWs [15]float64
 		}
 	}
 	if err := json.Unmarshal(b, &vec); err != nil {
@@ -41,14 +42,14 @@ func TestClientPredictionVectors(t *testing.T) {
 			t.Fatalf("%s: unknown map %q", c.Name, c.Map)
 		}
 		w := MakeWorld(m)
-		defs := DefsFor(g.Weapons, c.Primary)
+		defs := DefsFor(g.Weapons, c.Primary, c.Melee)
 		ps := PlayerState{X: c.Start[0], Y: c.Start[1], Z: c.Start[2], OnGround: true}
 		ws := NewWeaponState(defs)
 		var acts []Action
 		for i, e := range c.Wire {
 			in := Input{Seq: uint32(e[0]), Keys: int(e[1]), Yaw: e[2], Pitch: e[3], Buttons: int(e[4]), Slot: int(e[5])}
 			acts = SimulateInput(acts[:0], w, C, defs, &ps, &ws, &in)
-			got := [7]float64{ps.X, ps.Y, ps.Z, ps.VX, ps.VY, ps.VZ, b2f(ps.OnGround)}
+			got := [8]float64{ps.X, ps.Y, ps.Z, ps.VX, ps.VY, ps.VZ, b2f(ps.OnGround), float64(ps.Coy)}
 			for j := range got {
 				if !near(got[j], c.Expect[i][j]) {
 					t.Fatalf("%s input %d field %d: got %v want %v", c.Name, i, j, got[j], c.Expect[i][j])

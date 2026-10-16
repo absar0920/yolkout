@@ -111,6 +111,7 @@ type rosterJSON struct {
 	N   string `json:"n"`
 	Tm  int    `json:"tm"`
 	Cls string `json:"cls"`
+	Mel string `json:"mel"`
 	Cos Cos    `json:"cos"`
 	Sc  int    `json:"sc"`
 	Ki  int    `json:"ki"`
@@ -162,6 +163,7 @@ type spawnMsg struct {
 	Z   float64 `json:"z"`
 	Yaw float64 `json:"yaw"`
 	Cls string  `json:"cls"`
+	Mel string  `json:"mel"`
 	Tm  int     `json:"tm"`
 }
 
@@ -171,6 +173,7 @@ type hitMsg struct {
 	V  int     `json:"v"`
 	D  int     `json:"d"`
 	Hs int     `json:"hs"`
+	Z  int     `json:"z"`
 	Hp int     `json:"hp"`
 	Sh int     `json:"sh"`
 	W  string  `json:"w"`
@@ -185,6 +188,7 @@ type killMsg struct {
 	V  int     `json:"v"`
 	W  string  `json:"w"`
 	Hs int     `json:"hs"`
+	Z  int     `json:"z"`
 	St int     `json:"st"`
 	Rs float64 `json:"rs"`
 }
@@ -236,6 +240,12 @@ type sysMsg struct {
 type idMsg struct {
 	T  string `json:"t"`
 	ID int    `json:"id"`
+}
+
+type meleeMsg struct {
+	T  string `json:"t"`
+	ID int    `json:"id"`
+	W  string `json:"w"`
 }
 
 type sbJSON struct {
@@ -307,6 +317,7 @@ type inMsg struct {
 	V      int             `json:"v"`
 	Name   string          `json:"name"`
 	Cls    *string         `json:"cls"`
+	Mel    *string         `json:"mel"`
 	Cos    *cosIn          `json:"cos"`
 	Hold   *int            `json:"hold"` // ld: 1 = keep me dead while I pick a loadout, 0 = release
 	Mode   string          `json:"mode"`

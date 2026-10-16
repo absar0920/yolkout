@@ -140,7 +140,8 @@ func (r *Room) addBot() {
 	prim := r.g.Weapons.Primaries
 	cs := r.g.Cosmetics
 	cos := Cos{Hat: cs.Hats[r.rng.IntN(len(cs.Hats))].ID, Color: cs.Colors[r.rng.IntN(len(cs.Colors))].ID, Stamp: cs.Stamps[r.rng.IntN(len(cs.Stamps))].ID}
-	p := r.newPlayer(name, prim[r.rng.IntN(len(prim))], cos)
+	mels := r.g.Weapons.Melees
+	p := r.newPlayer(name, prim[r.rng.IntN(len(prim))], mels[r.rng.IntN(len(mels))], cos)
 	p.bot = &botBrain{skill: 0.25 + 0.5*r.rng.Float64(), role: p.ID % 2}
 	r.insert(p)
 	r.except(p.ID, mustJSON(rosterMsg{T: "join", P: r.roster(p)}))
@@ -388,6 +389,10 @@ func (r *Room) botThink(p *Player) {
 		if !p.Alive && r.rng.Float64() < 0.002 {
 			prim := r.g.Weapons.Primaries
 			p.Cls = prim[r.rng.IntN(len(prim))]
+			if r.rng.Float64() < 0.5 {
+				mels := r.g.Weapons.Melees
+				p.Mel = mels[r.rng.IntN(len(mels))]
+			}
 		}
 		b.queue = append(b.queue[:0], in)
 		return
@@ -553,7 +558,7 @@ func (r *Room) botThink(p *Player) {
 				btn |= sim.BtnFire
 			}
 		}
-		if dist < 1.8 && b.tap {
+		if dist < p.Defs.Melee.Range*0.9 && b.tap {
 			btn |= sim.BtnMelee
 		}
 		if dist > 8 && dist < 24 && p.WS.Gren > 0 && r.k >= b.nextNade && r.rng.Float64() < 0.01 {

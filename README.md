@@ -3,7 +3,8 @@
 # Yolkout
 
 **Yolkout** is a free, fast multiplayer first-person shooter that runs in the browser. Every player is an armed egg.
-It has arcade movement, seven primary weapons plus a sidearm, grenades and a rolling-pin melee, killstreaks, and three modes
+It has smooth arcade movement, seven primary weapons plus a sidearm with PUBG-style hit zones, grenades, four kitchen melee weapons
+(pick one: rolling pin, frying pan, whisk or spatula), killstreaks, and three modes
 (Free-For-All, Team Scramble, Nest Raid) on four hand-built arenas. You crack eggs, not wallets: **there are no ads, no
 analytics, no trackers and no purchases, and every cosmetic is unlocked for everyone.**
 
@@ -39,7 +40,7 @@ in-browser server and works offline. **Create room** makes a private, invite-onl
 | Jump | `Space` | A |
 | Reload | `R` | X |
 | Grenade | `G` or middle mouse button | RB |
-| Melee (rolling pin) | `F`, `V`, `3` or mouse side buttons | B or R3 |
+| Melee (the one in your loadout) | `F`, `V`, `3` or mouse side buttons | B or R3 |
 | Swap weapon | `Q` / `E`, mouse wheel, or `1` primary / `2` sidearm | Y or LB |
 | Scoreboard | hold `Tab` | Back |
 | Chat / team chat | `Enter` or `T` / `Y` | |
@@ -54,15 +55,47 @@ graphics quality, shadows, an FPS counter, view bob, name tags, crosshair colour
 | Weapon | Class | Notes |
 |---|---|---|
 | Benedict AR | Assault rifle | full-auto all-rounder |
-| Deviler | Shotgun | 10-pellet pump |
+| Deviler | Shotgun | 9-pellet pump, one-shot point blank |
 | Poacher | SMG | fastest fire rate and movement |
-| Shell Piercer | Sniper | a headshot kills in one hit |
+| Shell Piercer | Sniper | bolt action; a headshot kills in one hit, even through a full shield |
 | Frittata-3 | Burst rifle | 3-round burst |
 | Over Easy | Marksman | semi-auto, 2 headshots kill |
-| Souffle Launcher | Launcher | splash shells |
+| Souffle Launcher | Launcher | straight-flying splash rocket, own scope |
 | Coddler | Pistol (everyone) | infinite reserve |
 | Quiche Bomb | Grenade | bouncing, 1.8 s fuse |
-| Rolling Pin | Melee | 50 damage bonk |
+| Rolling Pin / Frying Pan / Whisk / Spatula | Melee (pick one) | sweep 50 dmg / heavy overhead 60 dmg (90 to the head) and a shove / fast 34 dmg jabs / 40 dmg uppercut that launches eggs |
+
+**Damage model (PUBG-style):** every bullet hits a zone: head (top cap of the egg), body, arms (the outer edges of the egg as the shooter
+sees it) or legs (the feet). Each gun class has its own zone multipliers and distance falloff, with PUBG's ratios
+adapted to 100 hp eggs (`shared/data/weapons.json`, `zones`). Hit markers, the kill feed and `hit`/`kill` events carry the zone.
+
+| Weapon | damage per hit body / head / limbs | shots to kill body / head / limbs |
+|---|---|---|
+| Benedict AR | 25 / 50 / 23 | 4 / 2 / 5 |
+| Frittata-3 | 28 / 56 / 25 | 4 / 2 / 4 |
+| Poacher SMG | 20 / 34 / 19 | 5 / 3 / 6 |
+| Over Easy DMR | 36 / 68 / 32 | 3 / 2 / 4 |
+| Shell Piercer | 94 / 155 / 68 | 2 / 1 (also through a full 50 shield) / 2 |
+| Deviler (all 9 pellets) | 105 / 152 / 105 | 1 point-blank |
+| Coddler | 22 / 40 / 22 | 5 / 3 / 5 |
+| Rolling Pin / Pan / Whisk / Spatula | 50/60, 60/90, 34/43, 40/44 (body/head) | 2, 2 (1 head + 1), 3, 3 |
+
+Movement has separate ground acceleration and friction, more air control and 0.1 s of coyote time (you can still jump just after
+running off a ledge). All of it is in the shared sim, so prediction stays exact. The camera is interpolated between the
+60 Hz ticks, eases up and down stairs (no 0.5 u hops), dips on landing, leans slightly when strafing and zooms over each gun's aim time.
+
+**Look and feel:** everything is a stylised cartoon built in code (no downloaded assets): toon-shaded guns, melee weapons,
+grenade and rocket with bevelled chunky silhouettes and ink outlines, and eggs with an animated face (blinking, brows that react).
+Every egg has gloved **hands**, in first person and on other players: they hold each gun by its grips, recoil with it, and play
+weapon-specific reloads timed to the gun's reload time (rifles and SMG: mag out, new mag, slap, bolt; Deviler: shells loaded
+one by one, then a pump; Shell Piercer: bolt open, clip pushed in; Souffle: a rocket slid into the tube; Coddler: mag drop,
+slide locks back on the last round), plus a pump/bolt after each shot, per-melee swings, a grenade throw and a holster-and-draw on swap.
+The Shell Piercer, Over Easy and Souffle Launcher aim through **full-screen scopes**; the launcher's reticle has egg-sized
+range marks at 15/30/60 u and no drop marks, because the rocket flies straight.
+**Shell cracks:** eggs crack in three stages as their health drops (other players see it on your shell, you see it creep across
+your screen and on the HUD egg, with a yolk tint at the last stage), and heal back with regeneration. Hit markers differ by
+zone (gold for the head, white body, smaller grey for limbs, red for a kill).
+Tracers always end at the first solid hit, so shots into a wall never streak out of its far side.
 
 * **Maps:** **Barnyard Brawl** (a barn with a hayloft, coops, silos), **Countertop** (a giant kitchen with a sink canyon, a spoon bridge and a pancake tower),
   **The Hatchery** (an egg factory with a catwalk ring and a central pit), **Sunrise Diner** (booths, a rooftop under the neon sign, trailers).
@@ -137,7 +170,7 @@ scripts/
 | 24 clients in 2 rooms | 60.0 ticks/s, snapshots every 33.3 ms (p99 38 ms), server ~20 % of one core, ~19 MB RSS |
 | Downstream per client (12-player room) | ~27 KB/s of JSON, ~14 KB/s on the wire with deflate |
 | Upstream per client | ~2.5 KB/s (60 inputs/s, batched in pairs) |
-| Client payload | three.js (~190 KB gzipped) + at most ~145 KB gzipped of game/UI modules, data and assets (only one map is fetched per match); no build step |
+| Client payload | three.js (~190 KB gzipped) + at most ~220 KB gzipped of game/UI modules (the procedural cartoon art and first-person animation code is ~45 KB of that), data and assets (only one map is fetched per match); no build step |
 | Home screen ready | ~0.3 s locally |
 
 ## Server flags
@@ -164,10 +197,11 @@ See `server/README.md`. The Docker image keeps the leaderboard in the `/app/var`
 | Command | What it checks |
 |---|---|
 | `make test-go` | `go vet` and `go test -race`: the sim port against `shared/testvectors` and `shared/physics_vectors.json`, rooms, matchmaking, combat (lag compensation, splash, melee), all three modes, the WebSocket protocol, HTTP static serving, stats |
-| `make test-js` | map validation (reachability, spawns, floors), `node --check` on every module, the JS reference vectors, client prediction/reconciliation/interpolation (7,341 checks) and an offline protocol smoke run |
-| `make bots` | starts a fresh server on port 18400. **Protocol checks:** version mismatch, oversized frames, malformed JSON, unknown room code, ping/pong, loadout updates, join by code, joins and leaves, chat sanitising. **Load:** 24 clients in 2 rooms (public FFA and private Team Scramble) aim, move, fire and throw grenades for 30 s. It asserts 30 snapshots/s and 60 ticks/s, that acks advance, that kills and respawns happen in both rooms, that chat stays inside each room, and that nobody disconnects. It then reports bandwidth, snapshot jitter, RTT and server CPU/RSS. |
-| `make e2e` | headless Chromium (software WebGL). It covers the home screen (desktop and 390 px phone), the loadout, all dialogs, online quickplay (non-blank render check, HUD, moving, firing, reloading, swapping, scoreboard, chat, killfeed, pause, leaving), creating a private room and joining it from a second browser, a bad room code, and practice mode with a timed respawn. It also starts a short-match server to drive a real match end, the results screen, the next map, and the disconnect screen on server shutdown. It fails on any console error. Screenshots go to `scripts/screenshots/`. |
+| `make test-js` | map validation (reachability, spawns, floors), `node --check` on every module, the JS reference vectors, client prediction/reconciliation/interpolation (8,600+ checks), an offline protocol smoke run, the practice server's hit zones, melee windup/knockback and straight rocket, and the `web/js/game/test` and `web/js/game/art/test` node tests |
+| `make bots` | starts a fresh server on port 18400. **Protocol checks:** version mismatch, oversized frames, malformed JSON, unknown room code, ping/pong, loadout updates, the melee loadout (`hello.mel`, `ld.mel`, the next spawn's melee, unknown ids), splash `z 0`, join by code, joins and leaves, chat sanitising. **Load:** 24 clients in 2 rooms (public FFA and private Team Scramble) aim, move, fire and throw grenades for 30 s. It asserts 30 snapshots/s and 60 ticks/s, that acks advance, that kills and respawns happen in both rooms, that every `hit` carries a valid zone, that chat stays inside each room, and that nobody disconnects. It then reports bandwidth, snapshot jitter, RTT and server CPU/RSS. |
+| `make e2e` | headless Chromium (software WebGL). It covers the home screen (desktop and 390 px phone), the loadout, all dialogs, online quickplay (non-blank render check, HUD, moving, firing, reloading, swapping, scoreboard, chat, killfeed, pause, leaving), creating a private room and joining it from a second browser, a bad room code, and practice mode with a timed respawn. The v2 checks cover the melee choice (persisted across a reload, applied at spawn on the server, the predictor and the view model), a rocket that flies straight (constant vertical speed and a collinear path, server and drawn copy), the full-screen launcher and sniper scopes, crack stages following health (your screen and other eggs), and rifle and shotgun tracers that never pass a wall. It also starts a short-match server to drive a real match end, the results screen, the next map, and the disconnect screen on server shutdown. It fails on any console error. Screenshots go to `scripts/screenshots/`. |
 | `make bench` | Go benchmark of a full room tick |
+| `make art-shots` / `make fp-shots` | (not part of `make test`) render the model gallery and first-person shots to `scripts/screenshots/art/` and `scripts/screenshots/fp/` |
 
 `web/js/engine/test/dev.html` runs the game without the menus (`?offline=1&mode=ffa&map=barnyard`).
 `web/js/engine/test/netcheck.mjs <ws-url> <secs>` runs a headless client against a live server and reports prediction error.

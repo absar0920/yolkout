@@ -33,7 +33,32 @@ const moveCases = [
 const worlds = {};
 const worldFor = (id) => (worlds[id] ??= S.makeWorld(J(`shared/data/maps/${id}.json`)));
 const defs = S.defsFor(weapons, "benedict");
-const state = (p) => [p.x, p.y, p.z, p.vx, p.vy, p.vz, p.onGround ? 1 : 0];
+const state = (p) => [p.x, p.y, p.z, p.vx, p.vy, p.vz, p.onGround ? 1 : 0, p.coy];
+
+// Coyote time: walk off the coop roof and press jump `late` ticks after the first airborne tick.
+function coyoteCase(name, late, wantJump) {
+  const w = worldFor("barnyard"), start = [0, 4, -27], yaw = PI;
+  const ps = S.newPlayerState(...start), ws = S.newWeaponState(defs.w[0], defs.w[1], defs.grenade);
+  let wasGround = false, drop = -1;
+  for (let i = 0; i < 200 && drop < 0; i++) {
+    S.simulateInput(w, C, defs, ps, ws, { seq: i + 1, keys: FWD, yaw, pitch: 0, buttons: 0, slot: 0 });
+    if (ps.onGround) wasGround = true;
+    else if (wasGround) drop = i;
+  }
+  if (drop < 0) throw new Error("coyote case: never left the roof");
+  const inputs = [...seg(drop + late, FWD, yaw), ...seg(1, FWD | JUMP, yaw), ...seg(30, FWD, yaw)];
+  const c = { name, map: "barnyard", start, inputs };
+  // sanity: the jump input must (or must not) launch the egg upward
+  const p2 = S.newPlayerState(...start), w2 = S.newWeaponState(defs.w[0], defs.w[1], defs.grenade);
+  let vyBefore = 0;
+  inputs.forEach(([keys, y], i) => {
+    if (i === drop + late) vyBefore = p2.vy;
+    S.simulateInput(w, C, defs, p2, w2, { seq: i + 1, keys, yaw: y, pitch: 0, buttons: 0, slot: 0 });
+    if (i === drop + late && (p2.vy > vyBefore) !== wantJump) throw new Error(`coyote case ${name}: jump=${p2.vy > vyBefore}`);
+  });
+  return c;
+}
+moveCases.push(coyoteCase("coyote_jump_after_ledge", 3, true), coyoteCase("coyote_expired", 8, false));
 const movement = moveCases.map((c) => {
   const w = worldFor(c.map);
   const ps = S.newPlayerState(...c.start);
@@ -55,9 +80,13 @@ const weaponCases = [
   { name: "manual_reload_then_melee_cancel", primary: "poacher", inputs: [...wseg(10, FIRE), ...wseg(1, RELOAD), ...wseg(30, 0), ...wseg(1, MELEE), ...wseg(60, 0), ...wseg(1, RELOAD), ...wseg(120, 0)] },
   { name: "grenades_and_cooldown", primary: "piercer", inputs: [...wseg(1, GRENADE), ...wseg(1, 0), ...wseg(1, GRENADE), ...wseg(60, 0), ...wseg(1, GRENADE), ...wseg(1, 0), ...wseg(1, GRENADE), ...wseg(5, FIRE | AIM), ...wseg(100, 0), ...wseg(3, FIRE)] },
   { name: "switch_spam_cancels_reload", primary: "overeasy", inputs: [...wseg(1, FIRE), ...wseg(1, RELOAD), ...wseg(10, 0, 1), ...wseg(10, 0, 0), ...wseg(140, 0, 0), ...wseg(1, FIRE)] },
+  { name: "pan_windup_then_hit", primary: "benedict", melee: "pan", inputs: [...wseg(1, MELEE), ...wseg(14, 0), ...wseg(1, FIRE), ...wseg(50, FIRE), ...wseg(1, MELEE), ...wseg(70, 0)] },
+  { name: "whisk_spam_cooldown", primary: "poacher", melee: "whisk", inputs: [...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap(() => [...wseg(3, MELEE), ...wseg(3, 0)]), ...wseg(40, 0)] },
+  { name: "melee_cancels_reload_with_windup", primary: "frittata", melee: "spatula", inputs: [...wseg(4, FIRE), ...wseg(20, 0), ...wseg(1, RELOAD), ...wseg(30, 0), ...wseg(1, MELEE), ...wseg(10, FIRE), ...wseg(40, 0), ...wseg(1, RELOAD), ...wseg(140, 0)] },
+  { name: "bogus_melee_uses_default", primary: "deviler", melee: "bogus", inputs: [...wseg(1, MELEE), ...wseg(60, 0)] },
 ];
 const weaponVec = weaponCases.map((c) => {
-  const d = S.defsFor(weapons, c.primary);
+  const d = S.defsFor(weapons, c.primary, c.melee);
   const ws = S.newWeaponState(d.w[0], d.w[1], d.grenade);
   const expect = c.inputs.map(([buttons, slot, moving]) => {
     const acts = S.weaponTick(ws, buttons, slot, d, C.dt, moving === 1);
@@ -87,11 +116,36 @@ const bw = worldFor("barnyard");
 const casts = [[0, 1.3, -20, 0, 0, 1, 100], [0, 1.3, 20, 0, -0.2, -0.98, 100], [-20, 5, 0, 1, 0, 0, 200], [30, 1, 30, 0, 1, 0, 50]]
   .map(([ox, oy, oz, dx, dy, dz, tmax]) => { const l = Math.hypot(dx, dy, dz); dx /= l; dy /= l; dz /= l; return { map: "barnyard", o: [ox, oy, oz], d: [dx, dy, dz], tmax, t: S.raycastWorld(bw, ox, oy, oz, dx, dy, dz, tmax) }; });
 const falloff = ["benedict", "deviler", "piercer", "coddler"].flatMap((id) => [0, 5, 18, 30, 45, 100].map((d) => ({ weapon: id, d, dmg: S.falloffDamage(weapons.weapons[id], d) })));
+// hit zones: [hx,hy,hz, px,py,pz, dx,dz] -> zone. Egg at feet p; shots mostly along -Z (lateral axis = X).
+const armX = C.armLat * C.hitRadii[0];
+const hitZone = [
+  [0, 1.3, 0.2, 0, 0, 0, 0, -1], // head (top cap)
+  [0, C.headshotY, 0.4, 0, 0, 0, 0, -1], // ly == headshotY: head (inclusive)
+  [0, C.headshotY - 1e-9, 0.4, 0, 0, 0, 0, -1], // just under: body
+  [0, 0.75, 0.42, 0, 0, 0, 0, -1], // dead centre: body
+  [0, 0.1, 0.3, 0, 0, 0, 0, -1], // feet: leg
+  [0, C.legY, 0.4, 0, 0, 0, 0, -1], // ly == legY: body (legs are strictly below)
+  [0, C.legY - 1e-9, 0.4, 0, 0, 0, 0, -1], // just under legY: leg
+  [0.38, 0.7, 0.1, 0, 0, 0, 0, -1], // right edge: arm
+  [-0.38, 0.7, 0.1, 0, 0, 0, 0, -1], // left edge: arm
+  [armX, 0.7, 0.2, 0, 0, 0, 0, -1], // lat == armLat (as computed): boundary
+  [armX - 1e-6, 0.7, 0.2, 0, 0, 0, 0, -1], // just inside: body
+  [0.38, 1.2, 0.1, 0, 0, 0, 0, -1], // edge above the head line: head wins
+  [0.38, 0.2, 0.1, 0, 0, 0, 0, -1], // edge below legY: leg wins
+  [0.1, 0.7, 0.38, 0, 0, 0, 0, -1], // shot along -Z: z offset is depth, not lateral -> body
+  [0.1, 0.7, 0.38, 0, 0, 0, -1, 0], // same point, shot along -X: lateral = z -> arm
+  [0.1, 0.7, -0.38, 0, 0, 0, 1, 0], // other side, shot along +X -> arm
+  [0.3, 0.8, 0.3, 0, 0, 0, 0, 0], // vertical ray (dx = dz = 0): body
+  [10.35, 5.7, -3.2, 10, 5, -3, 0.6, -0.8], // offset egg, diagonal ray
+  [10.05, 5.7, -3.0, 10, 5, -3, 0.6, -0.8], // offset egg, diagonal ray near the axis -> body
+  [3.3, 2.2, 1.0, 3, 1.0, 1.25, 0.7071067811865476, 0.7071067811865476], // head on a raised egg
+].map(([hx, hy, hz, px, py, pz, dx, dz]) => ({ h: [hx, hy, hz], p: [px, py, pz], d: [dx, dz], zone: S.hitZone(C, hx, hy, hz, px, py, pz, dx, dz) }));
+const zoneMul = [...weapons.primaries, weapons.secondary, ...weapons.melees, weapons.grenade].flatMap((id) => [0, 1, 2, 3, 4].map((z) => ({ weapon: id, zone: z, mul: S.zoneMul(weapons.weapons[id], z) })));
 
 const files = {
-  "movement.json": { note: "state = [x,y,z,vx,vy,vz,onGround] after each input; input = [keys,yaw,pitch,buttons,slot]; seq = index+1; weapons from 'primary'", dt: C.dt, cases: movement },
-  "weapons.json": { note: "input = [buttons, slot, moving]; expect[i].ws = weapon state array after tick i; acts = actions emitted", dt: C.dt, cases: weaponVec },
-  "math.json": { rng, seeds, dirs, egg, casts, falloff },
+  "movement.json": { note: "state = [x,y,z,vx,vy,vz,onGround,coy] after each input; input = [keys,yaw,pitch,buttons,slot]; seq = index+1; weapons from 'primary'", dt: C.dt, cases: movement },
+  "weapons.json": { note: "input = [buttons, slot, moving]; defs = defsFor(primary, melee); expect[i].ws = weapon state array (15 entries) after tick i; acts = actions emitted", dt: C.dt, cases: weaponVec },
+  "math.json": { rng, seeds, dirs, egg, casts, falloff, hitZone, zoneMul },
 };
 const outDir = join(root, "shared/testvectors");
 mkdirSync(outDir, { recursive: true });

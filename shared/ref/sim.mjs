@@ -14,6 +14,8 @@
 
 export const KEY = { FWD: 1, BACK: 2, LEFT: 4, RIGHT: 8, JUMP: 16 };
 export const BTN = { FIRE: 1, AIM: 2, RELOAD: 4, GRENADE: 8, MELEE: 16 };
+/** Hit zones (PROTOCOL.md 9.3). Wire `z` uses these ids; 0 = no zone (splash, fall). */
+export const ZONE = { NONE: 0, HEAD: 1, BODY: 2, ARM: 3, LEG: 4 };
 
 // ---------------------------------------------------------------- constants
 
@@ -24,10 +26,11 @@ export function makeConsts(rules) {
     dt: 1 / n.tickRate,
     halfWidth: p.halfWidth, height: p.height, eyeHeight: p.eyeHeight,
     hitCenterY: p.hitCenterY, hitRadii: p.hitRadii, headshotY: p.headshotY, maxPitch: p.maxPitch,
-    moveSpeed: m.moveSpeed, groundAccel: m.groundAccel, airAccel: m.airAccel,
+    legY: p.legY, armLat: p.armLat,
+    moveSpeed: m.moveSpeed, groundAccel: m.groundAccel, groundDecel: m.groundDecel, airAccel: m.airAccel,
     gravity: m.gravity, jumpVelocity: m.jumpVelocity, terminalVelocity: m.terminalVelocity,
     maxHorizontalSpeed: m.maxHorizontalSpeed, stepHeight: m.stepHeight, adsMoveMul: m.adsMoveMul,
-    eps: m.eps, movingSpeedThreshold: c.movingSpeedThreshold,
+    eps: m.eps, movingSpeedThreshold: c.movingSpeedThreshold, coyoteTicks: m.coyoteTicks,
   };
 }
 
@@ -55,9 +58,12 @@ export function makeWorld(map) {
 
 // ---------------------------------------------------------------- movement
 
-/** Player physics state. onGround is a boolean. */
+/**
+ * Player physics state. onGround is a boolean. coy = coyote ticks left: a jump is still
+ * allowed while coy > 0 after walking off a ledge (reset to coyoteTicks every grounded tick).
+ */
 export function newPlayerState(x, y, z) {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false };
+  return { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, coy: 0 };
 }
 
 /**
@@ -120,7 +126,7 @@ export function stepMove(world, C, st, keys, yaw, speedMul) {
   const speed = C.moveSpeed * speedMul;
 
   if (st.onGround) {
-    const k = Math.min(1, C.groundAccel * dt);
+    const k = Math.min(1, (len > 0 ? C.groundAccel : C.groundDecel) * dt);
     st.vx += (wx * speed - st.vx) * k;
     st.vz += (wz * speed - st.vz) * k;
   } else if (len > 0) {
@@ -131,7 +137,7 @@ export function stepMove(world, C, st, keys, yaw, speedMul) {
   const hs = Math.sqrt(st.vx * st.vx + st.vz * st.vz);
   if (hs > C.maxHorizontalSpeed) { const f = C.maxHorizontalSpeed / hs; st.vx *= f; st.vz *= f; }
 
-  if ((keys & KEY.JUMP) && st.onGround) { st.vy = C.jumpVelocity; st.onGround = false; }
+  if ((keys & KEY.JUMP) && (st.onGround || st.coy > 0)) { st.vy = C.jumpVelocity; st.onGround = false; st.coy = 0; }
 
   st.vy -= C.gravity * dt;
   if (st.vy < -C.terminalVelocity) st.vy = -C.terminalVelocity;
@@ -173,6 +179,7 @@ export function stepMove(world, C, st, keys, yaw, speedMul) {
   } else {
     st.onGround = false;
   }
+  st.coy = st.onGround ? C.coyoteTicks : (st.coy > 0 ? st.coy - 1 : 0);
 }
 
 // ---------------------------------------------------------------- RNG / aim
@@ -270,7 +277,31 @@ export function rayEgg(C, ox, oy, oz, dx, dy, dz, px, py, pz, tmax, inflate = 0)
   return t;
 }
 
-/** Damage of one bullet/pellet at distance d (before head multiplier). */
+/**
+ * Zone of a hit at (hx,hy,hz) on the egg standing at feet (px,py,pz), for a ray whose direction
+ * has horizontal part (dx,dz). Head = top cap (ly >= headshotY), leg = bottom (ly < legY),
+ * arm = the outer part of the mid band as seen by the shooter (|lateral| / rx >= armLat), else body.
+ */
+export function hitZone(C, hx, hy, hz, px, py, pz, dx, dz) {
+  const ly = hy - py;
+  if (ly >= C.headshotY) return ZONE.HEAD;
+  if (ly < C.legY) return ZONE.LEG;
+  const hl = Math.sqrt(dx * dx + dz * dz);
+  if (hl > 1e-6) {
+    const lat = Math.abs((hx - px) * (-dz / hl) + (hz - pz) * (dx / hl)) / C.hitRadii[0];
+    if (lat >= C.armLat) return ZONE.ARM;
+  }
+  return ZONE.BODY;
+}
+
+/** Damage multiplier of a zone for weapon def w (melee has no `zones`: head bonus only). */
+export function zoneMul(w, zone) {
+  const z = w.zones;
+  if (!z) return zone === ZONE.HEAD ? (w.headMul ?? 1) : 1;
+  return zone === ZONE.HEAD ? z.head : zone === ZONE.BODY ? z.body : zone === ZONE.ARM ? z.arm : zone === ZONE.LEG ? z.leg : 1;
+}
+
+/** Damage of one bullet/pellet at distance d (before the zone multiplier). */
 export function falloffDamage(w, d) {
   if (d <= w.falloffStart || w.falloffEnd <= w.falloffStart) return w.damage;
   if (d >= w.falloffEnd) return w.minDamage;
@@ -288,19 +319,20 @@ export function splashScale(radius, d) {
 
 /**
  * Weapon state. Wire order (snapshot me.ws):
- * [slot, mag0, mag1, res0, res1, gren, cd, rl, sw, bl, bloom, mt, gt, pb]
+ * [slot, mag0, mag1, res0, res1, gren, cd, rl, sw, bl, bloom, mt, gt, pb, mw]
+ * mw = melee windup left (s): the swing started, the hit resolves when it reaches 0.
  */
 export function newWeaponState(primary, secondary, grenade) {
   return {
     slot: 0, mag: [primary.magSize, secondary.magSize], res: [primary.reserve, secondary.reserve],
-    gren: grenade.startCount, cd: 0, rl: 0, sw: 0, bl: 0, bloom: 0, mt: 0, gt: 0, pb: 0,
+    gren: grenade.startCount, cd: 0, rl: 0, sw: 0, bl: 0, bloom: 0, mt: 0, gt: 0, pb: 0, mw: 0,
   };
 }
 export function weaponStateToArray(ws) {
-  return [ws.slot, ws.mag[0], ws.mag[1], ws.res[0], ws.res[1], ws.gren, ws.cd, ws.rl, ws.sw, ws.bl, ws.bloom, ws.mt, ws.gt, ws.pb];
+  return [ws.slot, ws.mag[0], ws.mag[1], ws.res[0], ws.res[1], ws.gren, ws.cd, ws.rl, ws.sw, ws.bl, ws.bloom, ws.mt, ws.gt, ws.pb, ws.mw];
 }
 export function weaponStateFromArray(a) {
-  return { slot: a[0], mag: [a[1], a[2]], res: [a[3], a[4]], gren: a[5], cd: a[6], rl: a[7], sw: a[8], bl: a[9], bloom: a[10], mt: a[11], gt: a[12], pb: a[13] };
+  return { slot: a[0], mag: [a[1], a[2]], res: [a[3], a[4]], gren: a[5], cd: a[6], rl: a[7], sw: a[8], bl: a[9], bloom: a[10], mt: a[11], gt: a[12], pb: a[13], mw: a[14] ?? 0 };
 }
 
 function refill(ws, w, s) {
@@ -313,7 +345,8 @@ function refill(ws, w, s) {
 /**
  * One tick of weapon logic. Mutates ws. Returns actions:
  *   {a:"fire", slot, spread, pellets}   -> caller builds shotDirs(pid, seq, yaw, pitch, spread, pellets)
- *   {a:"melee"} | {a:"grenade"} | {a:"reload"} (reload started) | {a:"switch", slot}
+ *   {a:"melee"} (swing started) | {a:"meleeHit"} (windup elapsed: resolve the hit now)
+ *   {a:"grenade"} | {a:"reload"} (reload started) | {a:"switch", slot}
  * defs = { w: [primaryDef, secondaryDef], grenade: grenadeDef, melee: meleeDef }
  * moving = !onGround || horizontal speed > movingSpeedThreshold (state AFTER this tick's movement).
  */
@@ -323,6 +356,7 @@ export function weaponTick(ws, buttons, slotReq, defs, dt, moving) {
   ws.cd -= dt;
   ws.mt = Math.max(0, ws.mt - dt);
   ws.gt = Math.max(0, ws.gt - dt);
+  if (ws.mw > 0) { ws.mw -= dt; if (ws.mw <= 1e-9) { ws.mw = 0; out.push({ a: "meleeHit" }); } }
 
   // Switching
   if ((slotReq === 0 || slotReq === 1) && slotReq !== ws.slot) {
@@ -343,9 +377,10 @@ export function weaponTick(ws, buttons, slotReq, defs, dt, moving) {
   if ((pressed & BTN.RELOAD) && ws.rl === 0 && ws.sw === 0 && ws.mag[s] < w.magSize && ws.res[s] !== 0) {
     ws.rl = w.reloadTime; ws.bl = 0; out.push({ a: "reload" });
   }
-  // Melee (cancels reload)
+  // Melee (cancels reload); the hit lands after the windup
   if ((pressed & BTN.MELEE) && ws.mt === 0 && ws.sw === 0) {
-    ws.mt = defs.melee.cooldown; ws.rl = 0; ws.bl = 0; out.push({ a: "melee" });
+    ws.mt = defs.melee.cooldown; ws.mw = defs.melee.windup || 0; ws.rl = 0; ws.bl = 0; out.push({ a: "melee" });
+    if (ws.mw <= 1e-9) { ws.mw = 0; out.push({ a: "meleeHit" }); }
   }
   // Grenade
   if ((pressed & BTN.GRENADE) && ws.gt === 0 && ws.gren > 0 && ws.sw === 0) {
@@ -399,11 +434,12 @@ export function simulateInput(world, C, defs, ps, ws, input) {
   return acts;
 }
 
-/** Resolve defs for a player's class from weapons.json. */
-export function defsFor(weaponsJson, primaryId) {
+/** Resolve defs for a player's primary and melee from weapons.json (unknown ids use the defaults). */
+export function defsFor(weaponsJson, primaryId, meleeId) {
   const W = weaponsJson.weapons;
   const p = W[primaryId] || W[weaponsJson.defaultPrimary];
-  return { w: [p, W[weaponsJson.secondary]], grenade: W[weaponsJson.grenade], melee: W[weaponsJson.melee] };
+  const ml = (weaponsJson.melees || []).includes(meleeId) && W[meleeId] ? W[meleeId] : W[weaponsJson.defaultMelee || weaponsJson.melee];
+  return { w: [p, W[weaponsJson.secondary]], grenade: W[weaponsJson.grenade], melee: ml };
 }
 
 // ---------------------------------------------------------------- projectiles

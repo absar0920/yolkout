@@ -29,10 +29,43 @@ export function grenadeIcon() {
     s("path", { d: "M25 9Q32 6 31 14", stroke: "currentColor", "stroke-width": 2.5, fill: "none" }));
 }
 
-export function meleeIcon() {
+// Melee silhouettes, drawn lying flat (handle on the left) in a 120x40 box.
+const rr = (x, y, w, hh, r) => `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${hh - 2 * r}a${r} ${r} 0 0 1 ${-r} ${r}h${-(w - 2 * r)}a${r} ${r} 0 0 1 ${-r} ${-r}v${-(hh - 2 * r)}a${r} ${r} 0 0 1 ${r} ${-r}Z`;
+const circ = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+const MELEES = {
+  rollingpin: () => [
+    s("rect", { x: 2, y: 16, width: 18, height: 8, rx: 4, fill: "currentColor" }),
+    s("rect", { x: 18, y: 9, width: 84, height: 22, rx: 9, fill: "currentColor" }),
+    s("rect", { x: 100, y: 16, width: 18, height: 8, rx: 4, fill: "currentColor" }),
+  ],
+  pan: () => [
+    // leather-wrapped handle with a hanging hole, cast-iron skillet with a rim ring
+    s("path", { d: rr(2, 16, 50, 8, 4) + circ(9, 20, 2), "fill-rule": "evenodd", fill: "currentColor" }),
+    s("path", { d: circ(83, 20, 19) + circ(83, 20, 14.5), "fill-rule": "evenodd", fill: "currentColor" }),
+    s("circle", { cx: 83, cy: 20, r: 12, fill: "currentColor", opacity: 0.55 }),
+  ],
+  whisk: () => [
+    s("rect", { x: 2, y: 15.5, width: 42, height: 9, rx: 4.5, fill: "currentColor" }),
+    ...[17, 11, 5].map((ry) => s("ellipse", { cx: 80, cy: 20, rx: 36, ry, fill: "none", stroke: "currentColor", "stroke-width": 2.6 })),
+    s("rect", { x: 42, y: 17, width: 8, height: 6, rx: 2, fill: "currentColor" }),
+  ],
+  spatula: () => [
+    s("rect", { x: 2, y: 16, width: 52, height: 8, rx: 4, fill: "currentColor" }),
+    s("rect", { x: 52, y: 17.5, width: 14, height: 5, rx: 1.5, fill: "currentColor" }),
+    s("path", { d: rr(64, 5, 54, 30, 7) + rr(73, 11, 36, 3.5, 1.7) + rr(73, 18.25, 36, 3.5, 1.7) + rr(73, 25.5, 36, 3.5, 1.7), "fill-rule": "evenodd", fill: "currentColor" }),
+  ],
+};
+
+/**
+ * Melee icon. meleeIcon(id) draws the square mini icon (the item tilted, for kit lists and the
+ * kill feed); meleeIcon(id, {wide: true}) draws it lying flat in the 120x40 gun-icon box.
+ * meleeIcon() with no id draws the rolling pin.
+ */
+export function meleeIcon(id = "rollingpin", { wide = false } = {}) {
+  const parts = (MELEES[id] || MELEES.rollingpin)();
+  if (wide) return s("svg", { viewBox: "0 0 120 40", class: "gun-icon melee-icon", "aria-hidden": "true" }, ...parts);
   return s("svg", { viewBox: "0 0 40 40", class: "mini-icon", "aria-hidden": "true" },
-    s("rect", { x: 8, y: 15, width: 24, height: 10, rx: 4, fill: "currentColor", transform: "rotate(-35 20 20)" }),
-    s("rect", { x: 1, y: 18, width: 38, height: 4, rx: 2, fill: "currentColor", transform: "rotate(-35 20 20)" }));
+    s("g", { transform: "translate(20 20) rotate(-35) scale(0.31) translate(-60 -20)" }, ...parts));
 }
 
 export function skullIcon() {

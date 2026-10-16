@@ -44,6 +44,7 @@ func (b *bucket) take(now time.Time) bool {
 // ldReq is a pending loadout change.
 type ldReq struct {
 	cls  *string
+	mel  *string
 	cos  *cosIn
 	hold *int
 }
@@ -272,7 +273,7 @@ func (c *Client) serve() {
 			}
 			c.mu.Lock()
 			if len(c.lds) < 4 {
-				c.lds = append(c.lds, ldReq{cls: msg.Cls, cos: msg.Cos, hold: msg.Hold})
+				c.lds = append(c.lds, ldReq{cls: msg.Cls, mel: msg.Mel, cos: msg.Cos, hold: msg.Hold})
 			}
 			c.mu.Unlock()
 		case "chat":

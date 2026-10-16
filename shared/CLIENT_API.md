@@ -32,6 +32,7 @@ player spawns right away. It rejects with an `Error` that has a `code` (`room_fu
 | `canvas` | HTMLCanvasElement | optional existing canvas, for example `#game`. It is un-hidden. If omitted, one is created in `container`. |
 | `name` | string | display name (the server sanitises it) |
 | `cls` | string | primary weapon id from `weapons.primaries` |
+| `mel` | string | melee id from `weapons.melees` (`rollingpin`, `pan`, `whisk`, `spatula`); missing or unknown = `weapons.defaultMelee`. Sent as `hello.mel`. |
 | `cosmetics` | `{hat, color, stamp}` | cosmetic ids from `cosmetics.json` |
 | `mode` | `"ffa" \| "teams" \| "nest"` | quickplay mode, or the mode of a created room |
 | `map` | string | preferred map when creating a room (`""` = random) |
@@ -53,7 +54,7 @@ Call `stop()` on the previous controller before starting a new game.
 | `sendChat(text, teamOnly=false)` | send a chat line (at most 120 characters) and leave chat mode. Call `resume()` afterwards, inside the same key or click handler, to re-lock the mouse. |
 | `cancelChat()` | leave chat mode without sending. Call `resume()` afterwards. |
 | `setSettings(partial)` | apply settings live |
-| `setLoadout({cls, cosmetics, hold})` | sends `ld`. A new primary applies at the next spawn; cosmetics apply immediately. `hold: true` (while dead) keeps you down for up to 10 s while choosing; `hold: false` releases. |
+| `setLoadout({cls, mel, cosmetics, hold})` | sends `ld`. A new primary or melee applies at the next spawn; cosmetics apply immediately. `hold: true` (while dead) keeps you down for up to 10 s while choosing; `hold: false` releases. |
 | `pause()` | release pointer lock. Input is ignored and the game keeps running, because this is multiplayer. |
 | `resume()` | request pointer lock (**must be called from a user gesture**). Paused state ends when the lock is granted. |
 | `lockPointer()` | request pointer lock (user gesture), for example from a "click to play" overlay |
@@ -68,7 +69,7 @@ Clicking the game canvas also requests pointer lock (setting `clickToLock`).
 | callback | argument |
 |---|---|
 | `onHud(state)` | about 15 times per second. `state` is described below. |
-| `onKillfeed(ev)` | `{killer:{id,name,team,me}, victim:{...}, weapon, weaponName, headshot, streak, suicide, respawnSec, meKiller, meVictim}` (`weapon` is `"fall"` for falls) |
+| `onKillfeed(ev)` | `{killer:{id,name,team,me}, victim:{...}, weapon, weaponName, headshot, zone, streak, suicide, respawnSec, meKiller, meVictim}` (`weapon` is `"fall"` for falls and the melee id, e.g. `"pan"`, for melee kills; `zone` from `kill.z`: 0 none, 1 head, 2 body, 3 arm, 4 leg) |
 | `onScoreboard(data)` | `{players:[{id,name,team,score,kills,deaths,streak,ping,alive,me,cls}] sorted, teamScores:[t1,t2], timeLeft, mode, modeName, limit, myId, myTeam, teams:[{id,name,color}]}`. Sent on every `sb` (1 Hz, and after kills), on join/leave, and when Tab is pressed. |
 | `onScoreboardToggle(visible)` | Tab (or gamepad Back) held or released |
 | `onChat(msg)` | `{id, name, team, text, teamOnly, me, system:false}`, or for system lines (joins, leaves, server `sys`) `{system:true, text}`. Render as text, never as HTML. |
@@ -83,9 +84,9 @@ Clicking the game canvas also requests pointer lock (setting `clickToLock`).
 | `onStreak(ev)` | `{id,name,team,me, n, reward, rewardName, desc}` |
 | `onPickup(ev)` | `{id,name,team,me, index, type, pickupName}` |
 | `onFlag(ev)` | Nest Raid: `{ev:"take"\|"drop"\|"return"\|"cap", team, teamName, teamColor, id, name, me, mine}`. `team` is the team whose egg it is. `mine` means it is your team's egg. |
-| `onHitConfirm(ev)` | you damaged someone: `{victim, damage, headshot, hp, sh, weapon}` |
-| `onDamaged(ev)` | you took damage: `{attacker, damage, headshot, hp, sh, weapon, from:[x,y,z]}` |
-| `onSpawn(ev)` | you spawned: `{x,y,z,cls}` |
+| `onHitConfirm(ev)` | you damaged someone: `{victim, damage, headshot, zone, hp, sh, weapon}` (`zone` from `hit.z`, fallback `hs ? 1 : 2`) |
+| `onDamaged(ev)` | you took damage: `{attacker, damage, headshot, zone, hp, sh, weapon, from:[x,y,z]}` |
+| `onSpawn(ev)` | you spawned: `{x,y,z,cls,mel}` |
 | `onLoadoutRequest()` | the loadout key (default `L`) was pressed while dead; the mouse is already released and the game paused |
 
 ### HUD state (`onHud` / `getState()`)
@@ -96,6 +97,7 @@ Clicking the game canvas also requests pointer lock (setting `clickToLock`).
   alive, hp, maxHp, shield, maxShield, fury /* seconds left */, streak,
   weapon: { id, name, class, slot, mag, magSize, reserve /* -1 = infinite */, reloading, reloadFrac /* 0..1 */, switching },
   primary: { id, name, class, slot, mag, magSize, reserve }, secondary: { ... },
+  melee: { id, name, ready /* false while the melee cooldown runs */, cooldown /* s */, left /* cooldown ticks left */ },
   grenades, maxGrenades, ads, scoped, spawnProtected, carrying,
   respawnIn /* s, 0 when alive */, killer: { id, name, team, me } | null,
   match: { state /* "live" | "ended" */, mode, modeName, map, mapName, timeLeft, teamScores, limit, teams, myTeam, myScore, myKills, myDeaths },
@@ -125,6 +127,7 @@ Clicking the game canvas also requests pointer lock (setting `clickToLock`).
 | `rawInput` | false | request `unadjustedMovement` pointer lock |
 | `clickToLock` | true | clicking the canvas locks the pointer |
 | `nameplates` | true | |
+| `shellCracks` | true | cracks creep across the screen (and the HUD health egg) as your health drops, in 3 stages, with a yolk tint at the last one |
 | `binds` | null | partial override of `DEFAULT_BINDS` (`{fwd:["KeyW"], ...}`, values are `KeyboardEvent.code` lists) |
 
 ## Controls
@@ -168,7 +171,8 @@ There is no sprint: the protocol has no sprint input. The game auto-switches to 
 The game calls `sfx.play(name, opts)` from `web/js/audio.js` if that module exists. A missing module or an error inside it is ignored.
 
 `name` is one of:
-- `shoot_<weaponId>` (`shoot_rollingpin` is used for melee swings)
+- `shoot_<weaponId>` (melee swings use `shoot_<meleeId>`: `shoot_rollingpin`, `shoot_pan`, `shoot_whisk`, `shoot_spatula`), `melee_hit_<meleeId>`
+- reload beats `mag_out`, `mag_in`, `bolt`, `pump`, `shell_in`, `slide`, `rocket_load`; `hit_limb`
 - `reload`, `hit`, `headshot`, `kill`, `death_crack`, `explode`
 - `jump`, `land`, `footstep`, `pickup`, `grenade_throw`, `empty`, `ui_click`
 
@@ -180,7 +184,9 @@ The game's overlay canvas uses `z-index: 2` and `pointer-events: none`. Put HUD 
 
 ## Dev and testing
 
-- `/js/engine/test/dev.html?offline=1&mode=ffa&map=barnyard&cls=benedict&bots=5` runs the game with no UI and the debug panel on. Drop `offline=1` to use the server.
+- `/js/engine/test/dev.html?offline=1&mode=ffa&map=barnyard&cls=benedict&mel=pan&bots=5` runs the game with no UI and the debug panel on. Drop `offline=1` to use the server.
+  Extra options: `debug=1` exposes `window.__yo = game.debugHooks()`, `hp=<n>` pins the local health (crack stages; needs `debug=1`), `hud=0` hides the debug panel, `q=low|medium|high` sets quality.
+- `Game.debugHooks()` (screenshots and browser tests): `freeze(timeline, frac, {empty})` poses the view model (`reload`, `cycle`, `melee`, `grenade`, `switch`, `fire`, `idle`; `null` unfreezes), `setHp(hp)`, `setAds(on)`, `fire(ticks)`, `press(btn, ticks)`, `walk(keys, ticks)`, `setWeapon(slot)`, `camAt(x, y, z, yaw, pitch)` (teleports in practice mode too) and `state()`. It also returns `game`, `vm`, `overlay` and `effects`.
 - `node --import ./web/js/engine/test/register.mjs web/js/engine/test/physics.test.mjs` runs the prediction, quantisation, reconciliation and interpolation vectors and an offline protocol smoke test.
 - `node --import ./web/js/engine/test/register.mjs web/js/engine/test/gen-physics-vectors.mjs [--check]` regenerates or checks `shared/physics_vectors.json`.
 - `node --import ./web/js/engine/test/register.mjs web/js/engine/test/netcheck.mjs ws://localhost:8080/ws 10` runs a headless client against a live server and reports reconciliation error.

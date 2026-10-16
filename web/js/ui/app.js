@@ -28,6 +28,8 @@ function ensureProfile(data) {
   const P = app.profile;
   const W = data.weapons;
   if (!W.primaries.includes(P.cls)) P.cls = W.defaultPrimary || W.primaries[0];
+  const melees = W.melees || [W.melee];
+  if (!melees.includes(P.mel)) P.mel = W.defaultMelee || W.melee;
   const C = data.cosmetics;
   const cos = Object.assign({}, C.defaults, P.cos || {});
   if (!C.colors.some((c) => c.id === cos.color)) cos.color = C.defaults.color;
@@ -104,6 +106,7 @@ app.play = async function play(opts) {
       container: host,
       name: P.name,
       cls: P.cls,
+      mel: P.mel,
       primaryWeapon: P.cls,
       cosmetics: P.cos,
       mode: opts.mode || P.mode,
@@ -185,10 +188,10 @@ app.openLoadoutInGame = () => {
     const game = app.game;
     if (game) {
       const stillDead = !game.getState().alive;
-      const patch = saved ? { cls: app.profile.cls, cosmetics: app.profile.cos } : {};
+      const patch = saved ? { cls: app.profile.cls, mel: app.profile.mel, cosmetics: app.profile.cos } : {};
       if (dead) patch.hold = false;
       if (saved || dead) { try { game.setLoadout(patch); } catch (e) { console.warn(e); } }
-      if (saved) toast(stillDead ? "Loadout saved: respawning with your new primary." : "Loadout saved: new primary at your next respawn.", "info");
+      if (saved) toast(stillDead ? "Loadout saved: respawning with your new kit." : "Loadout saved: new primary and melee at your next respawn.", "info");
       // Saving from the death screen drops you straight back in (the click is the user gesture pointer lock needs).
       if (saved && dead) { try { game.resume(); } catch (e) { console.warn(e); } }
     }

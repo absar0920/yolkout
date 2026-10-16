@@ -28,18 +28,22 @@
       0.42
     ],
     "headshotY": 1.08,
+    "legY": 0.32,
+    "armLat": 0.78,
     "maxPitch": 1.5
   },
   "move": {
     "moveSpeed": 6.0,
-    "groundAccel": 14.0,
-    "airAccel": 2.5,
+    "groundAccel": 12.0,
+    "groundDecel": 16.0,
+    "airAccel": 3.5,
     "gravity": 24.0,
     "jumpVelocity": 8.2,
     "terminalVelocity": 25.0,
     "maxHorizontalSpeed": 20.0,
     "stepHeight": 0.55,
     "adsMoveMul": 0.65,
+    "coyoteTicks": 6,
     "eps": 1e-06
   },
   "combat": {
@@ -51,7 +55,8 @@
     "selfSplashMul": 0.5,
     "friendlyFire": false,
     "movingSpeedThreshold": 1.0,
-    "knockbackUp": 2.0
+    "knockbackUp": 2.0,
+    "meleeKnockUp": 0.35
   },
   "pickups": {
     "radius": 1.0,

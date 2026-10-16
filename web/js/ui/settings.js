@@ -66,6 +66,7 @@ export function initSettings(app) {
         toggle({ id: "set-shadows", label: "Shadows", checked: S.shadows, onChange: (v) => apply({ shadows: v }) }).row,
         toggle({ id: "set-fps", label: "Show FPS and ping", checked: S.showFps, onChange: (v) => apply({ showFps: v }) }).row,
         toggle({ id: "set-bob", label: "View bob", checked: S.viewBob, onChange: (v) => apply({ viewBob: v }) }).row,
+        toggle({ id: "set-cracks", label: "Shell cracks", hint: "Cracks creep across the screen as your health drops", checked: S.shellCracks !== false, onChange: (v) => apply({ shellCracks: v }) }).row,
         toggle({ id: "set-plates", label: "Name tags", checked: S.nameplates, onChange: (v) => apply({ nameplates: v }) }).row,
         toggle({ id: "set-xhair", label: "Crosshair", checked: S.crosshair, onChange: (v) => apply({ crosshair: v }) }).row,
         h("div.field.select-row",

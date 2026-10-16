@@ -36,9 +36,10 @@ function releaseRenderer(renderer) {
 }
 
 /**
- * Mount a 3D preview into `host`. Returns a controller {set(cos, cls), dispose()} or null.
+ * Mount a 3D preview into `host`. Returns a controller {set(cos, cls, mel), dispose()} or null.
+ * mel (optional) is the melee id; changing it plays that melee's swing once so the player sees it.
  */
-export async function mountPreview3D(host, cos, cls) {
+export async function mountPreview3D(host, cos, cls, mel) {
   if (!webglOK()) return null;
   let M;
   let data;
@@ -80,7 +81,7 @@ export async function mountPreview3D(host, cos, cls) {
 
   let avatar;
   try {
-    avatar = new models.EggAvatar(data, { cos, cls, nameplate: false });
+    avatar = new models.EggAvatar(data, { cos, cls, mel: mel || undefined, nameplate: false });
   } catch (e) {
     console.warn("3D preview avatar failed", e);
     releaseRenderer(renderer);
@@ -138,10 +139,11 @@ export async function mountPreview3D(host, cos, cls) {
   raf = requestAnimationFrame(frame);
 
   return {
-    set(nextCos, nextCls) {
+    set(nextCos, nextCls, nextMel) {
       try {
         if (nextCos) avatar.setCosmetics(nextCos);
         if (nextCls) avatar.setWeapon(nextCls);
+        if (nextMel && nextMel !== avatar.meleeId && avatar.setMelee) { avatar.setMelee(nextMel); avatar.melee(); }
       } catch (e) { console.warn(e); }
     },
     dispose() {

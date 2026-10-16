@@ -529,6 +529,9 @@ body.in-game .loading { background: rgba(13, 12, 16, .85); }
 .vitals.mid .hp-fill { fill: #ff9a3d; }
 .vitals.low .hp-fill { fill: var(--red); }
 .vitals.low .hp-egg { animation: pulse .8s ease-in-out infinite; }
+.hp-crack { display: none; fill: none; stroke: #3b2616; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.vitals.crack-1 .hp-crack.c1, .vitals.crack-2 .hp-crack.c1, .vitals.crack-2 .hp-crack.c2,
+.vitals.crack-3 .hp-crack { display: inline; }
 .vitals.dead { opacity: .5; }
 .hp-shine { fill: none; stroke: rgba(255, 255, 255, .7); stroke-width: 3; stroke-linecap: round; }
 .hp-outline { fill: none; stroke: #fff; stroke-width: 3.5; }
@@ -560,6 +563,9 @@ body.in-game .loading { background: rgba(13, 12, 16, .85); }
 .slot { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 4px; border-radius: 8px; background: rgba(255, 255, 255, .1); font-size: .72rem; opacity: .6; }
 .slot kbd { font-size: .68rem; border-width: 1.5px; min-width: 1.4em; }
 .slot.active { opacity: 1; background: rgba(255, 194, 61, .3); box-shadow: inset 0 0 0 1.5px var(--yolk); }
+.slot-melee { position: relative; overflow: hidden; opacity: .85; }
+.slot-melee .melee-cd { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--yolk); }
+.slot-melee.cooling { opacity: .55; }
 .gren-pips { display: inline-flex; gap: 3px; margin-left: 4px; }
 .gren-pips i { width: 10px; height: 13px; border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%; border: 2px solid #fff; opacity: .5; }
 .gren-pips i.on { background: #8bc34a; opacity: 1; }

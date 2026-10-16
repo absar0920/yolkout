@@ -70,7 +70,8 @@ func (r *Room) spawn(p *Player) {
 	s := sc[r.rng.IntN(n)].s
 
 	p.CurCls = p.Cls
-	p.Defs = sim.DefsFor(r.g.Weapons, p.CurCls)
+	p.CurMel = p.Mel
+	p.Defs = sim.DefsFor(r.g.Weapons, p.CurCls, p.CurMel)
 	p.WS = sim.NewWeaponState(p.Defs)
 	p.PS = sim.PlayerState{X: s.Pos[0], Y: s.Pos[1], Z: s.Pos[2], OnGround: true}
 	p.Yaw, p.Pitch, p.Slot, p.Btns = s.Yaw, 0, 0, 0
@@ -84,7 +85,7 @@ func (r *Room) spawn(p *Player) {
 	if p.bot != nil {
 		p.bot.onSpawn(r, p)
 	}
-	r.all(mustJSON(spawnMsg{T: "spawn", ID: p.ID, X: s.Pos[0], Y: s.Pos[1], Z: s.Pos[2], Yaw: s.Yaw, Cls: p.CurCls, Tm: p.Team}))
+	r.all(mustJSON(spawnMsg{T: "spawn", ID: p.ID, X: s.Pos[0], Y: s.Pos[1], Z: s.Pos[2], Yaw: s.Yaw, Cls: p.CurCls, Mel: p.CurMel, Tm: p.Team}))
 }
 
 // stepPickups: respawn timers, then collection in map order / ascending id.

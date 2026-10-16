@@ -58,7 +58,7 @@ func TestMovementVectors(t *testing.T) {
 			Start   [3]float64
 			Primary string
 			Inputs  [][5]float64
-			Expect  [][7]float64
+			Expect  [][8]float64
 		}
 	}
 	readVec(t, "movement.json", &vec)
@@ -70,14 +70,14 @@ func TestMovementVectors(t *testing.T) {
 	}
 	for _, c := range vec.Cases {
 		w := MakeWorld(g.Maps[c.Map])
-		defs := DefsFor(g.Weapons, c.Primary)
+		defs := DefsFor(g.Weapons, c.Primary, "")
 		ps := PlayerState{X: c.Start[0], Y: c.Start[1], Z: c.Start[2]}
 		ws := NewWeaponState(defs)
 		var acts []Action
 		for i, in := range c.Inputs {
 			input := Input{Seq: uint32(i + 1), Keys: int(in[0]), Yaw: in[1], Pitch: in[2], Buttons: int(in[3]), Slot: int(in[4])}
 			acts = SimulateInput(acts[:0], w, C, defs, &ps, &ws, &input)
-			got := [7]float64{ps.X, ps.Y, ps.Z, ps.VX, ps.VY, ps.VZ, b2f(ps.OnGround)}
+			got := [8]float64{ps.X, ps.Y, ps.Z, ps.VX, ps.VY, ps.VZ, b2f(ps.OnGround), float64(ps.Coy)}
 			for j := range got {
 				if !near(got[j], c.Expect[i][j]) {
 					t.Fatalf("%s input %d field %d: got %v want %v (state %v want %v)", c.Name, i, j, got[j], c.Expect[i][j], got, c.Expect[i])
@@ -94,9 +94,10 @@ func TestWeaponVectors(t *testing.T) {
 		Cases []struct {
 			Name    string
 			Primary string
+			Melee   string
 			Inputs  [][3]int
 			Expect  []struct {
-				Ws   [14]float64
+				Ws   [15]float64
 				Acts [][]json.RawMessage
 			}
 		}
@@ -104,7 +105,7 @@ func TestWeaponVectors(t *testing.T) {
 	readVec(t, "weapons.json", &vec)
 	intField := map[int]bool{0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 9: true, 13: true}
 	for _, c := range vec.Cases {
-		defs := DefsFor(g.Weapons, c.Primary)
+		defs := DefsFor(g.Weapons, c.Primary, c.Melee)
 		ws := NewWeaponState(defs)
 		for i, in := range c.Inputs {
 			acts := WeaponTick(nil, &ws, in[0], in[1], defs, C.Dt, in[2] == 1)
@@ -186,6 +187,16 @@ func TestMathVectors(t *testing.T) {
 			D      float64
 			Dmg    float64
 		}
+		HitZone []struct {
+			H, P [3]float64
+			D    [2]float64
+			Zone int
+		}
+		ZoneMul []struct {
+			Weapon string
+			Zone   int
+			Mul    float64
+		}
 	}
 	readVec(t, "math.json", &vec)
 	for _, r := range vec.Rng {
@@ -236,6 +247,26 @@ func TestMathVectors(t *testing.T) {
 	for _, f := range vec.Falloff {
 		if got := FalloffDamage(g.Weapon(f.Weapon), f.D); !near(got, f.Dmg) {
 			t.Fatalf("falloff %+v: got %v", f, got)
+		}
+	}
+	if len(vec.HitZone) < 16 || len(vec.ZoneMul) == 0 {
+		t.Fatalf("math.json: %d hitZone and %d zoneMul cases", len(vec.HitZone), len(vec.ZoneMul))
+	}
+	seen := map[int]bool{}
+	for _, z := range vec.HitZone {
+		if got := HitZone(C, z.H[0], z.H[1], z.H[2], z.P[0], z.P[1], z.P[2], z.D[0], z.D[1]); got != z.Zone {
+			t.Fatalf("hitZone %+v: got %d", z, got)
+		}
+		seen[z.Zone] = true
+	}
+	for _, zz := range []int{ZoneHead, ZoneBody, ZoneArm, ZoneLeg} {
+		if !seen[zz] {
+			t.Fatalf("hitZone vectors never produce zone %d", zz)
+		}
+	}
+	for _, z := range vec.ZoneMul {
+		if got := ZoneMul(g.Weapon(z.Weapon), z.Zone); got != z.Mul {
+			t.Fatalf("zoneMul %+v: got %v", z, got)
 		}
 	}
 }
@@ -319,5 +350,46 @@ func TestSubWorldSameResults(t *testing.T) {
 				t.Fatalf("%s #%d: full %+v sub %+v", id, i, a, b)
 			}
 		}
+	}
+}
+
+func TestLauncherShellFliesStraight(t *testing.T) {
+	g := loadGame(t)
+	def := g.Weapon("souffle").Projectile
+	if def.Gravity != 0 {
+		t.Fatalf("launcher gravity %v, want 0", def.Gravity)
+	}
+	w := MakeWorld(g.Maps["barnyard"])
+	pr := NewProjectile(1, 1, def, 0, 5, 0, 0, 0, -def.Speed)
+	for i := 0; i < 400; i++ {
+		ex, at := StepProjectile(w, pr, 1.0/60)
+		if math.Abs(pr.Y-5) >= 1e-9 || (ex && math.Abs(at[1]-5) >= 1e-9) {
+			t.Fatalf("tick %d: y %v (explode %v at %v)", i, pr.Y, ex, at)
+		}
+		if ex {
+			return
+		}
+	}
+	t.Fatal("shell never exploded")
+}
+
+func TestCoyoteAndDecel(t *testing.T) {
+	g := loadGame(t)
+	C := MakeConsts(g.Rules)
+	if C.CoyoteTicks != 6 || C.GroundDecel <= C.GroundAccel {
+		t.Fatalf("consts: %+v", C)
+	}
+	w := &World{Boxes: []float64{-10, -1, -10, 10, 0, 10}, Count: 1}
+	st := PlayerState{OnGround: true}
+	for i := 0; i < 60; i++ {
+		StepMove(w, C, &st, KeyFwd, 0, 1)
+	}
+	if !st.OnGround || st.Coy != C.CoyoteTicks || math.Abs(st.VZ+C.MoveSpeed) > 1e-4 {
+		t.Fatalf("walking: %+v", st)
+	}
+	// releasing the keys stops faster than starting (decel > accel)
+	StepMove(w, C, &st, 0, 0, 1)
+	if want := -C.MoveSpeed * (1 - C.GroundDecel*C.Dt); math.Abs(st.VZ-want) > 1e-4 {
+		t.Fatalf("decel: vz %v want %v", st.VZ, want)
 	}
 }

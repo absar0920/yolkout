@@ -21,7 +21,7 @@ let fails = 0, checks = 0;
 function ok(cond, msg) { checks++; if (!cond) { fails++; if (fails < 30) console.error("FAIL", msg); } }
 const near = (a, b) => Math.abs(a - b) <= TOL;
 const arrNear = (a, b) => a.length === b.length && a.every((v, i) => (typeof v === "number" ? near(v, b[i]) : v === b[i]));
-const stateArr = (ps) => [ps.x, ps.y, ps.z, ps.vx, ps.vy, ps.vz, ps.onGround ? 1 : 0];
+const stateArr = (ps) => [ps.x, ps.y, ps.z, ps.vx, ps.vy, ps.vz, ps.onGround ? 1 : 0, ps.coy];
 
 // 1a. movement vectors through the Predictor
 {
@@ -41,7 +41,7 @@ const stateArr = (ps) => [ps.x, ps.y, ps.z, ps.vx, ps.vy, ps.vz, ps.onGround ? 1
 {
   const v = read("shared/testvectors/weapons.json");
   for (const c of v.cases) {
-    const d = data.defs(c.primary);
+    const d = data.defs(c.primary, c.melee);
     const ws = Phys.newWeaponState(d.w[0], d.w[1], d.grenade);
     c.inputs.forEach(([b, s, mv], i) => {
       const acts = Phys.weaponTick(ws, b, s, d, C.dt, mv === 1)
@@ -64,7 +64,7 @@ const stateArr = (ps) => [ps.x, ps.y, ps.z, ps.vx, ps.vy, ps.vz, ps.onGround ? 1
   for (const [raw, w] of v.quant.norm) ok(near(Phys.normYaw(raw), w), `normYaw(${raw})`);
   for (const c of v.predict) {
     const { world } = await data.map(c.map);
-    const pr = new Phys.Predictor(world, C, data.defs(c.primary));
+    const pr = new Phys.Predictor(world, C, data.defs(c.primary, c.melee));
     pr.reset(...c.start);
     c.raw.forEach((x, i) => {
       const e = Phys.makeInputEntry(i + 1, x[0], x[1], x[2], x[3], x[4], 0, C.maxPitch);
@@ -140,9 +140,14 @@ const stateArr = (ps) => [ps.x, ps.y, ps.z, ps.vx, ps.vy, ps.vz, ps.onGround ? 1
   const seen = {};
   let lastSnap = null, snaps = 0;
   conn.onAny = (m) => { seen[m.t] = (seen[m.t] || 0) + 1; if (m.t === "s") { lastSnap = m; snaps++; } };
-  const w = await conn.connect({ name: "Tester!!", cls: "deviler", cos: { hat: "chef" }, mode: "teams", map: "", room: "", create: 0 });
+  const w = await conn.connect({ name: "Tester!!", cls: "deviler", mel: "pan", cos: { hat: "chef" }, mode: "teams", map: "", room: "", create: 0 });
   ok(w.t === "welcome" && w.id > 0 && w.room.code === "LOCAL", "welcome");
   ok(w.players.find((p) => p.id === w.id).n === "Tester", "name sanitised");
+  ok(w.players.find((p) => p.id === w.id).mel === "pan", "roster mel from hello");
+  ok(w.players.every((p) => data.weapons.melees.includes(p.mel)), "every roster entry has a valid mel");
+  const pus = [];
+  conn.on("pu", (m) => pus.push(m));
+  conn.send({ t: "ld", mel: "whisk" });
   // drive 60 Hz inputs for ~3 s
   let seq = 0;
   const t0 = performance.now();
@@ -159,9 +164,70 @@ const stateArr = (ps) => [ps.x, ps.y, ps.z, ps.vx, ps.vy, ps.vz, ps.onGround ? 1
   ok(seen.join === 5, `joins ${seen.join}`);
   ok(snaps > 70, `snapshots ${snaps} in 3 s`);
   ok(lastSnap && lastSnap.a > 100 && lastSnap.a <= seq, `ack ${lastSnap && lastSnap.a} / seq ${seq}`);
-  ok(lastSnap && lastSnap.p.length === 6 && Array.isArray(lastSnap.me.ws) && lastSnap.me.ws.length === 14, "snapshot shape");
+  ok(lastSnap && lastSnap.p.length === 6 && Array.isArray(lastSnap.me.ws) && lastSnap.me.ws.length === 15 && Number.isInteger(lastSnap.me.cy), "snapshot shape");
+  ok(pus.some((m) => m.p.id === w.id && m.p.mel === "whisk"), "ld mel -> pu");
+  ok(ls.human.mel === "whisk" && ls.human.spawnMel === "pan", "ld mel applies at the next spawn only");
   ok(seen.sb >= 2, "scoreboard");
   console.log("offline smoke:", JSON.stringify(seen));
+}
+
+// 5. localserver combat: hit zones on the wire, melee windup + knockback, bogus mel, straight rocket
+{
+  const ls = new LocalServer(data, { mode: "ffa", bots: 0 });
+  await ls.init();
+  const conn = new Connection({ socketFactory: () => ls.socket() });
+  const evs = [];
+  conn.onAny = (m) => evs.push(m);
+  const w = await conn.connect({ name: "Z", cls: "benedict", mel: "bogus", mode: "ffa", map: "", room: "", create: 0 });
+  ok(w.players.find((p) => p.id === w.id).mel === data.weapons.defaultMelee, "bogus mel -> defaultMelee");
+  ls.stop(); // drive ticks by hand
+  // a flat open arena so nothing blocks the test shots
+  ls.world = Phys.makeWorld({ boxes: [{ min: [-40, -1, -40], max: [40, 0, 40] }], bounds: { min: [-40, -10, -40], max: [40, 30, 40] } });
+  const H = ls.human;
+  const V = ls._addPlayer("Dummy", "benedict", "pan", { hat: "none", color: "classic", stamp: "none" }, null);
+  ls._spawn(V);
+  const place = (P, x, y, z) => { P.ps = Phys.newPlayerState(x, y, z); P.ps.onGround = true; P.protEnd = 0; };
+  const run = (inp) => { H.queue.push(inp); ls._tick(); };
+  let seq = 1000;
+  const shoot = (pitch, buttons = Phys.BTN.FIRE | Phys.BTN.AIM) => { run({ seq: ++seq, keys: 0, yaw: 0, pitch, buttons, slot: 0, rt: ls.k }); run({ seq: ++seq, keys: 0, yaw: 0, pitch, buttons: 0, slot: 0, rt: ls.k }); };
+  const hitsFor = () => evs.filter((m) => m.t === "hit" && m.v === V.id);
+  const settle = () => new Promise((r) => setTimeout(r, 0)); // frames are delivered in a microtask
+  // head, body, leg from 10 u away (benedict 25 dmg, zones 2.0/1.0/0.9)
+  const cases = [[1.25, 1, 50], [0.75, 2, 25], [0.15, 4, 23]];
+  for (const [hy, zone, dmg] of cases) {
+    place(H, 0, 0, 10); place(V, 0, 0, 0); V.hp = 100; V.sh = 0; H.ws = Phys.newWeaponState(H.defs.w[0], H.defs.w[1], H.defs.grenade);
+    for (let i = 0; i < 20; i++) ls._tick();
+    evs.length = 0;
+    shoot(Math.atan2(hy - C.eyeHeight, 10 - 0.42));
+    await settle();
+    const h = hitsFor()[0];
+    ok(h && h.z === zone && h.d === dmg && h.hs === (zone === 1 ? 1 : 0), `localserver zone ${zone}: ${JSON.stringify(h)}`);
+  }
+  // melee: pan windup 0.18 s -> the hit lands 11 ticks after the press, then knockback
+  place(H, 0, 0, 1.6); place(V, 0, 0, 0); V.hp = 100;
+  H.defs = data.defs("benedict", "pan"); H.spawnMel = "pan"; H.ws = Phys.newWeaponState(H.defs.w[0], H.defs.w[1], H.defs.grenade);
+  for (let i = 0; i < 20; i++) ls._tick();
+  evs.length = 0;
+  run({ seq: ++seq, keys: 0, yaw: 0, pitch: -0.45, buttons: Phys.BTN.MELEE, slot: 0, rt: ls.k });
+  let at = -1, kv = null;
+  for (let i = 1; i < 20 && at < 0; i++) {
+    run({ seq: ++seq, keys: 0, yaw: 0, pitch: -0.45, buttons: 0, slot: 0, rt: ls.k });
+    if (V.hp < 100) { at = i; kv = [V.ps.vx, V.ps.vy, V.ps.vz]; }
+  }
+  await settle();
+  const mh = hitsFor()[0];
+  ok(evs.some((m) => m.t === "melee") === false, "own melee is not echoed to the attacker");
+  ok(at === 11 && mh && mh.w === "pan" && mh.d === 60 && mh.z === 2, `pan hit after the windup: tick ${at} ${JSON.stringify(mh)}`);
+  // (the victim then takes its own starved movement tick in the same server tick: gravity only)
+  ok(kv && Math.abs(kv[2] + 6) < 1e-9 && Math.abs(kv[1] - (6 * data.rules.combat.meleeKnockUp - C.gravity * C.dt)) < 1e-9, `pan knockback ${kv}`);
+  // straight rocket: gravity 0, fired level from (0,5,0) toward -Z
+  const pd = data.weapons.weapons.souffle.projectile;
+  const { world } = await data.map("barnyard");
+  const pr = Phys.newProjectile(1, 1, pd, 0, 5, 0, 0, 0, -pd.speed);
+  let straight = true, n = 0;
+  for (; n < 400; n++) { const r = Phys.stepProjectile(world, pr, C.dt); if (Math.abs(pr.y - 5) >= 1e-9 || (r && Math.abs(r.y - 5) >= 1e-9)) straight = false; if (r) break; }
+  ok(pd.gravity === 0 && straight && n > 1, `rocket flies straight (${n} ticks)`);
+  conn.close();
 }
 
 console.log(`${checks - fails}/${checks} checks passed`);

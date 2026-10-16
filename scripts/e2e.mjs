@@ -6,7 +6,8 @@
 // Expects a running server at --url (make e2e starts one). Exits non-zero on any failure.
 // Flows: home screen (desktop + 390 px phone), loadout, settings, online quickplay
 // (render check, HUD, move, fire, reload, scoreboard, chat, pause), private room create + join
-// by a second browser context, and offline practice vs bots (with a forced death to time the respawn).
+// by a second browser context, offline practice vs bots (with a forced death to time the respawn), and the v2
+// mechanics in practice (melee loadout, straight rocket, scopes, health cracks, tracers stop at walls).
 // With --server <binary>, it also starts its own short-match server (FFA time limit 25 s, no bots, on
 // --url's port + 1) to drive a real match end -> results -> intermission -> next map, and then
 // stops that server (SIGTERM) to check the disconnect screen.
@@ -155,6 +156,12 @@ async function home(browser) {
   await page.waitForSelector("#loadout:not([hidden])");
   check("loadout: 7 primaries listed", (await page.locator("#weapon-list [role=radio], #weapon-list button").count()) >= 7);
   await page.locator("#weapon-list [role=radio], #weapon-list button").nth(1).click();
+  const melees = await page.locator("#melee-list [role=radio]").count();
+  check("loadout: melee picker lists 4 melees (pick one)", melees === 4, String(melees));
+  await page.locator('#melee-list [role=radio][data-id="pan"]').click();
+  const meleeOn = await page.locator('#melee-list [role=radio][aria-checked="true"]').count();
+  const kitPan = await page.locator("#kit-list").innerText();
+  check("loadout: exactly one melee selected, shown in the kit list", meleeOn === 1 && /Frying Pan/.test(kitPan), kitPan.replace(/\s+/g, " "));
   for (const tab of ["hat", "stamp", "color"]) {
     await page.click(`#tab-${tab}`);
     check(`loadout: ${tab} tab has options`, (await page.locator("#cos-grid [role=radio], #cos-grid button").count()) >= 4);
@@ -165,7 +172,8 @@ async function home(browser) {
   await page.click("#loadout-done");
   await page.waitForSelector("#home:not([hidden])");
   const prof = await page.evaluate(() => JSON.parse(JSON.stringify(window.__yolkoutUI.profile)));
-  check("loadout: saved to profile", !!prof.cls && !!prof.cos, `${prof.cls} ${JSON.stringify(prof.cos)}`);
+  check("loadout: saved to profile", !!prof.cls && !!prof.cos && prof.mel === "pan", `${prof.cls} ${prof.mel} ${JSON.stringify(prof.cos)}`);
+  check("home: melee chip shows the chosen melee", /Frying Pan/.test(await page.locator("#home-weapon").innerText()));
 
   // settings + help + leaderboard + about dialogs
   for (const [btn, dlg, name] of [["#open-settings", "#dlg-settings", "03-settings"], ["#open-help", "#dlg-help", "04-help"], ["#open-leaderboard", "#dlg-leaderboard", "05-leaderboard"], ["#open-about", "#dlg-about", null]]) {
@@ -380,7 +388,8 @@ async function privateRooms(browser) {
   await pc.waitForSelector("body.ready");
   await pc.fill("#code-input", "ZZZZZZ");
   await pc.click("#join-btn");
-  await sleep(2500);
+  // the join loads the game modules first (cold on a loaded machine), then the server answers "no room"
+  await pc.waitForFunction(() => /no room|code/i.test(document.getElementById("toasts").textContent), null, { timeout: 8000 }).catch(() => {});
   const toastTxt = await pc.evaluate(() => document.getElementById("toasts").textContent);
   check("private: unknown code shows an error toast", /no room|code/i.test(toastTxt), toastTxt.slice(0, 80));
   check("private: still on home after bad code", await pc.locator("#home").isVisible());
@@ -444,18 +453,207 @@ async function practice(browser) {
   const ldOpen = await page.locator("#loadout:not([hidden])").count();
   check("practice: death-screen loadout opens", ldOpen === 1, `via ${via}`);
   await sleep(5000); // past the 3 s respawn timer
-  const held = await page.evaluate(() => { const H = window.__yolkoutUI.game._game.local.human; return { alive: H.alive, hold: !!H.hold, cls: H.cls }; });
+  const held = await page.evaluate(() => { const H = window.__yolkoutUI.game._game.local.human; return { alive: H.alive, hold: !!H.hold, cls: H.cls, mel: H.mel }; });
   check("practice: respawn held while choosing", !held.alive && held.hold, JSON.stringify(held));
   const pick = await page.evaluate((cur) => {
-    const b = [...document.querySelectorAll("#loadout .weapon-btn")].find((x) => x.getAttribute("aria-checked") !== "true");
+    const b = [...document.querySelectorAll("#weapon-list .weapon-btn")].find((x) => x.getAttribute("aria-checked") !== "true");
     if (b) b.click();
-    return b ? b.dataset.id || b.textContent.trim() : "";
+    const m = [...document.querySelectorAll("#melee-list .weapon-btn")].find((x) => x.getAttribute("aria-checked") !== "true");
+    if (m) m.click();
+    return (b ? b.dataset.id || b.textContent.trim() : "") + "/" + (m ? m.dataset.id : "");
   }, held.cls);
   await page.click("#loadout-done");
   await sleep(500);
-  const after = await page.evaluate(() => { const H = window.__yolkoutUI.game._game.local.human; return { alive: H.alive, hold: !!H.hold, cls: H.cls, spawnCls: H.spawnCls }; });
+  const after = await page.evaluate(() => { const H = window.__yolkoutUI.game._game.local.human; return { alive: H.alive, hold: !!H.hold, cls: H.cls, spawnCls: H.spawnCls, mel: H.mel, spawnMel: H.spawnMel }; });
   check("practice: save respawns at once with the new primary", after.alive && !after.hold && after.spawnCls !== held.cls && after.spawnCls === after.cls, `${held.cls} -> ${JSON.stringify(after)} (${pick})`);
+  check("practice: ... and the new melee", after.spawnMel !== held.mel && after.spawnMel === after.mel, `${held.mel} -> ${after.spawnMel} (${pick})`);
   check("practice: no console errors", errors.length === 0, errors.slice(0, 5).join(" | "));
+  await ctx.close();
+}
+
+// v2 mechanics in practice mode: melee loadout persisted + applied at spawn, straight rocket, full-screen scopes,
+// health-driven shell cracks (own overlay + other eggs), tracers never pass a wall, no console errors.
+async function v2(browser) {
+  const ctx = await gameContext(browser, { width: 960, height: 540 });
+  const page = await ctx.newPage();
+  const errors = watch(page, "v2");
+  await page.goto(BASE + "/");
+  await page.waitForSelector("body.ready");
+  await page.click("#loadout-btn");
+  await page.waitForSelector("#loadout:not([hidden])");
+  await page.locator('#weapon-list [role=radio][data-id="souffle"]').click();
+  await page.locator('#melee-list [role=radio][data-id="whisk"]').click();
+  await page.click("#loadout-done");
+  await page.waitForSelector("#home:not([hidden])");
+  await page.reload();
+  await page.waitForSelector("body.ready");
+  const prof = await page.evaluate(() => JSON.parse(JSON.stringify(window.__yolkoutUI.profile)));
+  check("v2: melee + primary persist across a reload", prof.mel === "whisk" && prof.cls === "souffle", `${prof.cls} ${prof.mel}`);
+  await page.click("#practice-btn");
+  await page.waitForSelector("#hud:not([hidden])", { timeout: 20000 });
+  await enterGame(page);
+  await page.waitForFunction(() => { const g = window.__yolkoutUI.game; return g && g._game.local && g._game.local.human.alive && g._game.predictor; }, null, { timeout: 15000 });
+  await sleep(800);
+  const sp = await page.evaluate(() => {
+    const g = window.__yolkoutUI.game._game, H = g.local.human, hs = g.hudState ? g.hudState() : null;
+    return { spawnMel: H.spawnMel, mel: H.mel, defsMel: H.defs && H.defs.melee && H.defs.melee.id, vm: g.vm.meleeId,
+      predMel: g.predictor.defs.melee && g.predictor.defs.melee.id, hud: hs && hs.melee ? hs.melee.id : null, cls: H.spawnCls || H.cls };
+  });
+  check("v2: chosen melee applied at spawn (server, predictor, view model)", sp.spawnMel === "whisk" && sp.vm === "whisk" && (sp.predMel || "whisk") === "whisk", JSON.stringify(sp));
+
+  // ---- full-screen scope with the launcher
+  const scopeOn = async () => {
+    await page.evaluate(() => window.__yolkoutUI.game._game.debugHooks().setAds(true));
+    const on = await page.waitForFunction(() => window.__yolkoutUI.game._game.overlay.scopeOn, null, { timeout: 4000 }).then(() => true).catch(() => false);
+    return { on };
+  };
+  let sc = await scopeOn();
+  await shot(page, "40-v2-scope-launcher");
+  check("v2: ADS with the launcher shows the full-screen scope", sc.on, JSON.stringify(sc));
+  await page.evaluate(() => window.__yolkoutUI.game._game.debugHooks().setAds(false));
+  await sleep(400);
+  const off = await page.evaluate(() => window.__yolkoutUI.game._game.overlay.scopeOn);
+  check("v2: scope closes when ADS is released", !off);
+
+  // ---- rocket flies straight: fire into open space, sample the server projectile and the drawn mesh
+  const rk = await page.evaluate(async () => {
+    const g = window.__yolkoutUI.game._game, Y = g.debugHooks(), Phys = await import("/js/engine/physics.js");
+    const L = g.local, H = L.human;
+    H.hp = 1e9; // keep the test egg alive while bots roam
+    const s = Y.state();
+    let yaw = null, bestT = 0;
+    for (let k = 0; k < 72; k++) {
+      const a = (k / 72) * Math.PI * 2, d = Phys.aimDir(a, 0.12);
+      let t = Phys.raycastWorld(g.world, s.x, s.y + g.C.eyeHeight, s.z, d[0], d[1], d[2], 60);
+      if (t < 0) t = 60;
+      if (t > bestT) { bestT = t; yaw = a; }
+    }
+    Y.camAt(s.x, s.y, s.z, yaw, 0.12); // aim a little up: gravity would bend this into an arc
+    await new Promise((r) => setTimeout(r, 300));
+    const before = new Set(L.proj.map((p) => p.id));
+    const S = [], M = [], t0 = performance.now();
+    let id = null;
+    // record every simulation step (frames are slow on software GL, so several ticks run per frame)
+    const oS = L._stepProjectiles, oP = g._stepPredicted;
+    L._stepProjectiles = function () {
+      const r = oS.apply(this, arguments);
+      const pr = L.proj.find((p) => p.kind === 1 && p.owner === H.id && !before.has(p.id) && (id === null || p.id === id));
+      if (pr) { id = pr.id; S.push([pr.x, pr.y, pr.z, pr.vy]); }
+      return r;
+    };
+    g._stepPredicted = function () {
+      const r = oP.apply(this, arguments);
+      for (const pp of g.predProj) if (pp.kind === 1 && !pp.exploded) M.push([pp.pr.x, pp.pr.y, pp.pr.z]);
+      return r;
+    };
+    Y.fire(2);
+    await new Promise((resolve) => {
+      const iv = setInterval(() => {
+        const alive = id !== null && L.proj.some((p) => p.id === id);
+        if ((id !== null && !alive) || performance.now() - t0 > 2500) { clearInterval(iv); resolve(); }
+      }, 20);
+    });
+    L._stepProjectiles = oS; g._stepPredicted = oP;
+    // largest distance of any sample from the line through the first and last samples
+    const dev = (P) => {
+      if (P.length < 3) return -1;
+      const a = P[0], b = P[P.length - 1], ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], n = Math.hypot(...ab);
+      let m = 0;
+      for (const p of P) {
+        const ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+        const cx = ap[1] * ab[2] - ap[2] * ab[1], cy = ap[2] * ab[0] - ap[0] * ab[2], cz = ap[0] * ab[1] - ap[1] * ab[0];
+        m = Math.max(m, Math.hypot(cx, cy, cz) / n);
+      }
+      return m;
+    };
+    const len = (P) => (P.length > 1 ? Math.hypot(P[P.length - 1][0] - P[0][0], P[P.length - 1][1] - P[0][1], P[P.length - 1][2] - P[0][2]) : 0);
+    const vys = S.map((p) => p[3]);
+    return { n: S.length, dist: +len(S).toFixed(2), dev: +dev(S).toFixed(5), vy: vys.length ? +(Math.max(...vys) - Math.min(...vys)).toFixed(6) : -1,
+      rise: S.length > 1 ? +(S[S.length - 1][1] - S[0][1]).toFixed(2) : 0, mn: M.length, mdist: +len(M).toFixed(2), mdev: +dev(M).toFixed(4) };
+  });
+  check("v2: rocket flies straight (server projectile: constant vy, collinear path)", rk.n >= 4 && rk.dist > 3 && rk.vy === 0 && rk.dev >= 0 && rk.dev < 0.01, JSON.stringify(rk));
+  check("v2: drawn rocket flies straight too", rk.mn >= 3 && rk.mdev >= 0 && rk.mdev < 0.03, JSON.stringify(rk));
+  await sleep(2500); // past the launcher reload
+
+  // ---- swap primary to the sniper (through the loadout API + a respawn) and scope again
+  await page.evaluate(() => { const g = window.__yolkoutUI.game._game; g.local.human.hp = 100; g.local._kill(g.local.human, g.local.human, "fall", 0); window.__yolkoutUI.game.setLoadout({ cls: "piercer" }); });
+  await page.waitForFunction(() => { const g = window.__yolkoutUI.game._game; return g.local.human.alive && g.vm.currentId === "piercer"; }, null, { timeout: 10000 }).catch(() => {});
+  await sleep(600);
+  sc = await scopeOn();
+  await shot(page, "41-v2-scope-sniper");
+  check("v2: ADS with the sniper shows the full-screen scope", sc.on, JSON.stringify(sc));
+  await page.evaluate(() => window.__yolkoutUI.game._game.debugHooks().setAds(false));
+  await sleep(300);
+
+  // ---- cracks follow health: own screen overlay and other eggs' shells
+  const cr = await page.evaluate(async () => {
+    const g = window.__yolkoutUI.game._game, L = g.local, H = L.human;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const out = {};
+    H.protEnd = 1e12; // no bot damage while the test sets hp by hand
+    for (const hp of [100, 60, 35, 12, 100]) {
+      H.hp = hp; H.lastDmgK = 1e12;
+      await wait(700);
+      out["me" + hp + (out["me" + hp] ? "b" : "")] = g.overlay.crackA.map((v) => +v.toFixed(2)).join("/");
+    }
+    const bot = [...L.players.values()].find((p) => p !== H && p.alive && g.avatars.get(p.id));
+    if (bot) {
+      const av = g.avatars.get(bot.id);
+      bot.protEnd = 1e12; bot.hp = 100; await wait(500); out.bot100 = +av.anim.crack.toFixed(2);
+      bot.hp = 15; bot.lastDmgK = 1e12; await wait(700); out.bot15 = +av.anim.crack.toFixed(2);
+      bot.hp = 100; bot.protEnd = 0;
+    }
+    H.protEnd = 0;
+    return out;
+  });
+  const st = (k) => (cr[k] || "").split("/").map(Number);
+  const okMe = st("me100").every((v) => v < 0.05) && st("me60")[0] > 0.9 && st("me60")[1] < 0.1 && st("me35")[1] > 0.9 && st("me12")[2] > 0.9 && st("me100b").every((v) => v < 0.05);
+  check("v2: own shell cracks grow as hp drops and heal back", okMe, JSON.stringify(cr));
+  check("v2: other eggs' shells crack with their health", cr.bot100 === undefined || (cr.bot100 < 0.2 && cr.bot15 > 2.5), `bot crack stage ${cr.bot100} -> ${cr.bot15}`);
+
+  // ---- wall shot: rifle + shotgun tracers never reach past the first solid hit
+  for (const cls of ["benedict", "deviler"]) {
+    await page.evaluate((cls) => { const g = window.__yolkoutUI.game._game; g.local.human.hp = 100; g.local._kill(g.local.human, g.local.human, "fall", 0); window.__yolkoutUI.game.setLoadout({ cls }); }, cls);
+    await page.waitForFunction((cls) => { const g = window.__yolkoutUI.game._game; return g.local.human.alive && g.vm.currentId === cls; }, cls, { timeout: 10000 }).catch(() => {});
+    await sleep(500);
+    const res = await page.evaluate(async (gid) => {
+      const g = window.__yolkoutUI.game._game, Y = g.debugHooks(), Phys = await import("/js/engine/physics.js");
+      g.local.human.hp = 1e9;
+      const s = Y.state(), eyeH = g.C.eyeHeight;
+      let best = null;
+      for (let k = 0; k < 96 && !best; k++) {
+        const yaw = (k / 96) * Math.PI * 2, d = Phys.aimDir(yaw, 0);
+        const t = Phys.raycastWorld(g.world, s.x, s.y + eyeH, s.z, d[0], d[1], d[2], 20);
+        if (t < 3 || t > 14) continue;
+        best = { yaw, d, t };
+      }
+      if (!best) return { err: "no wall found" };
+      Y.camAt(s.x + best.d[0] * (best.t - 2), s.y, s.z + best.d[2] * (best.t - 2), best.yaw, 0);
+      const holes0 = g.effects.holes.used, ring = g.effects.holes.next ?? null;
+      await new Promise((r) => setTimeout(r, 300));
+      Y.fire(gid === "deviler" ? 3 : 40);
+      const out = { bad: 0, n: 0, maxOver: -9 };
+      const s1 = Y.state(), s0 = [s1.x, s1.y + eyeH, s1.z].map((v) => +v.toFixed(2));
+      const t0 = performance.now();
+      while (performance.now() - t0 < (gid === "deviler" ? 700 : 1000)) {
+        for (const tr of g.effects.tracers) {
+          const head = Math.min(tr.L, tr.t * tr.speed);
+          const tw = Phys.raycastWorld(g.world, tr.sx, tr.sy, tr.sz, tr.dx, tr.dy, tr.dz, 200);
+          if (tw < 0) continue;
+          out.n++;
+          out.maxOver = Math.max(out.maxOver, head - tw);
+          if (head > tw + 0.02) { out.bad++; if (!out.ex || out.ex.length < 4) (out.ex = out.ex || []).push({ c: tr.color.toString(16), s: [tr.sx, tr.sy, tr.sz].map((v) => +v.toFixed(2)), d: [tr.dx, tr.dy, tr.dz].map((v) => +v.toFixed(3)), L: +tr.L.toFixed(2), head: +head.toFixed(2), tw: +tw.toFixed(2), me: s0 }); }
+        }
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+      out.holes = g.effects.holes.used - holes0;
+      if (out.holes <= 0 && ring !== null) out.holes = (g.effects.holes.next ?? ring) !== ring ? 1 : 0; // pool already full
+      return out;
+    }, cls);
+    check(`v2: ${cls} tracers stop at the wall`, !res.err && res.bad === 0 && res.holes > 0, JSON.stringify(res));
+  }
+  await shot(page, "42-v2-wall");
+  check("v2: no console errors", errors.length === 0, errors.slice(0, 5).join(" | "));
   await ctx.close();
 }
 
@@ -525,6 +723,7 @@ try {
   if (want("online")) fps = await online(browser);
   if (want("private")) await privateRooms(browser);
   if (want("practice")) await practice(browser);
+  if (want("v2")) await v2(browser);
   if (SERVER_BIN && want("match")) await matchLifecycle(browser);
   else console.log("(skipping match lifecycle: pass --server <binary> to run it)");
 } catch (e) {

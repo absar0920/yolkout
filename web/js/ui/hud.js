@@ -28,7 +28,7 @@ export function initHud(app) {
     chips: E("hud-chips"), prot: E("chip-prot"), fury: E("chip-fury"), streak: E("chip-streak"), carry: E("chip-carry"),
     vitals: E("vitals"), hpFill: E("hp-fill"), shRing: E("sh-ring"), hpNum: E("hp-num"), shNum: E("sh-num"),
     weapon: E("weapon-panel"), wName: E("w-name"), wIcon: E("w-icon"), mag: E("ammo-mag"), res: E("ammo-res"), reload: E("reload-bar"), reloadFill: E("reload-fill"),
-    ammoHint: E("ammo-hint"), slot0: E("slot-0"), slot1: E("slot-1"), gren: E("gren-pips"),
+    ammoHint: E("ammo-hint"), slot0: E("slot-0"), slot1: E("slot-1"), slotMelee: E("slot-melee"), gren: E("gren-pips"),
     chat: E("chat"), chatLog: E("chat-log"), chatForm: E("chat-form"), chatInput: E("chat-input"), chatScope: E("chat-scope"),
     sb: E("scoreboard"), pause: E("pause"), clickPlay: E("click-to-play"), end: E("match-end"), disc: E("disconnected"),
     pauseCode: E("pause-code"), pauseInfo: E("pause-info"),
@@ -306,6 +306,9 @@ export function initHud(app) {
     set(el.shRing, "sh", `${((sh / (s.maxShield || 50)) * 100).toFixed(1)} 100`, "attr:stroke-dasharray");
     set(el.shNum, "shn", sh > 0 ? `+${sh}` : "");
     set(el.vitals, "dead", !s.alive, "class:dead");
+    // shell cracks on the health egg (same thresholds as the egg avatars and the screen overlay)
+    const crack = !s.alive ? 0 : frac >= 0.75 ? 0 : frac >= 0.5 ? 1 : frac >= 0.25 ? 2 : 3;
+    for (let i = 1; i <= 3; i++) set(el.vitals, `crack${i}`, crack === i, `class:crack-${i}`);
 
     // weapon
     const w = s.weapon;
@@ -326,6 +329,16 @@ export function initHud(app) {
     }
     if (s.primary) set(el.slot0.querySelector("span"), "s0n", s.primary.name);
     if (s.secondary) set(el.slot1.querySelector("span"), "s1n", s.secondary.name);
+    if (el.slotMelee) {
+      const m = s.melee;
+      set(el.slotMelee, "mlh", !m, "hidden");
+      if (m) {
+        set(el.slotMelee.querySelector("span"), "mln", m.name);
+        const left = m.cooldown > 0 ? Math.max(0, Math.min(1, (m.left || 0) / m.cooldown)) : 0;
+        set(el.slotMelee, "mlc", left > 0, "class:cooling");
+        set(el.slotMelee.querySelector(".melee-cd"), "mlw", left > 0 ? `${Math.round((1 - left) * 100)}%` : "0%", "style:width");
+      }
+    }
     const gk = `${s.grenades}/${s.maxGrenades}`;
     if (cache.get("gren") !== gk) {
       cache.set("gren", gk);
