@@ -308,6 +308,7 @@ type inMsg struct {
 	Name   string          `json:"name"`
 	Cls    *string         `json:"cls"`
 	Cos    *cosIn          `json:"cos"`
+	Hold   *int            `json:"hold"` // ld: 1 = keep me dead while I pick a loadout, 0 = release
 	Mode   string          `json:"mode"`
 	Map    string          `json:"map"`
 	Room   string          `json:"room"`

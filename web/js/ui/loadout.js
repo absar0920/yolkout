@@ -177,12 +177,13 @@ export function initLoadout(app) {
 
   return {
     /** Open the screen. done(saved) runs on close. */
-    open(done, { inGame = false } = {}) {
+    open(done, { inGame = false, dead = false } = {}) {
       returnFocus = document.activeElement;
       draft = { cls: profile.cls, cos: Object.assign({}, profile.cos) };
       onDone = done;
       root.classList.toggle("in-game", inGame);
-      $("#loadout-note").textContent = inGame ? "Your new primary is issued at your next respawn. Style changes apply right away." : "";
+      $("#loadout-note").textContent = dead ? "Your respawn is on hold (up to 10 s) while you choose. Save to drop back in with the new gun."
+        : inGame ? "Your new primary is issued at your next respawn. Style changes apply right away." : "";
       root.hidden = false;
       renderWeapons();
       renderTab();

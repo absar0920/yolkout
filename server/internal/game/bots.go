@@ -76,11 +76,12 @@ func (r *Room) botCount() int {
 }
 
 // manageBots keeps the number of bots at max(0, fill - humans) while any
-// human is present, adding at most one bot per tick.
+// human is present, adding at most one bot per tick. Private rooms are for
+// invited players only and never get bots.
 func (r *Room) manageBots() {
 	maxP := r.g.Rules.Net.MaxPlayersPerRoom
 	want := 0
-	if r.humans > 0 {
+	if r.humans > 0 && !r.Priv {
 		want = max(0, min(r.mgr.Cfg.BotFill-r.humans, maxP-r.humans))
 	}
 	n := r.botCount()

@@ -371,6 +371,7 @@ async function privateRooms(browser) {
   await sleep(1500);
   const names = await pa.evaluate(() => [...window.__yolkoutUI.game._game.roster.values()].map((r) => r.n || r.name));
   check("private: host sees guest in roster", names.some((n) => /Guest/.test(n)), names.join(","));
+  check("private: invited players only (no bots)", names.length === 2, names.join(","));
   // bad code
   const pc = await b.newPage();
   const errC = [];
@@ -432,6 +433,28 @@ async function practice(browser) {
   check("practice: respawn wall time ~3 s (no slow motion)", r.wall > 2.5 && r.wall < 5, `${r.wall.toFixed(2)} s wall`);
   const deadShot = await page.locator("#hud-respawn").count();
   check("practice: respawn panel exists", deadShot === 1);
+  // change loadout from the death screen: respawn is held while choosing, then you drop in with the new gun
+  await page.evaluate(() => { const L = window.__yolkoutUI.game._game.local; L._kill(L.human, L.human, "fall", 0); });
+  await page.waitForSelector("#respawn-loadout:not([hidden])", { state: "visible", timeout: 5000 }).catch(() => {});
+  // L works while the mouse is locked; the button works when it isn't
+  await page.keyboard.press("KeyL");
+  await sleep(300);
+  let via = "L key";
+  if (!(await page.locator("#loadout:not([hidden])").count())) { via = "button"; await page.click("#respawn-loadout", { timeout: 5000 }).catch(() => {}); }
+  const ldOpen = await page.locator("#loadout:not([hidden])").count();
+  check("practice: death-screen loadout opens", ldOpen === 1, `via ${via}`);
+  await sleep(5000); // past the 3 s respawn timer
+  const held = await page.evaluate(() => { const H = window.__yolkoutUI.game._game.local.human; return { alive: H.alive, hold: !!H.hold, cls: H.cls }; });
+  check("practice: respawn held while choosing", !held.alive && held.hold, JSON.stringify(held));
+  const pick = await page.evaluate((cur) => {
+    const b = [...document.querySelectorAll("#loadout .weapon-btn")].find((x) => x.getAttribute("aria-checked") !== "true");
+    if (b) b.click();
+    return b ? b.dataset.id || b.textContent.trim() : "";
+  }, held.cls);
+  await page.click("#loadout-done");
+  await sleep(500);
+  const after = await page.evaluate(() => { const H = window.__yolkoutUI.game._game.local.human; return { alive: H.alive, hold: !!H.hold, cls: H.cls, spawnCls: H.spawnCls }; });
+  check("practice: save respawns at once with the new primary", after.alive && !after.hold && after.spawnCls !== held.cls && after.spawnCls === after.cls, `${held.cls} -> ${JSON.stringify(after)} (${pick})`);
   check("practice: no console errors", errors.length === 0, errors.slice(0, 5).join(" | "));
   await ctx.close();
 }

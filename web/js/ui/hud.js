@@ -3,9 +3,10 @@
 // The game itself draws the crosshair, hit markers, damage arrows, scope and vignette on its own
 // overlay canvas; this module never duplicates those.
 
-import { $, h, clear, mmss, fill, put } from "./dom.js";
+import { $, h, clear, mmss, fill, put, keyName } from "./dom.js";
 import { crackIcon, skullIcon, eggIcon, gunIcon } from "./icons.js";
 import { sfx } from "../audio.js";
+import { effectiveBinds } from "./settings.js";
 
 const KILLFEED_MAX = 6;
 const KILLFEED_MS = 7000;
@@ -23,7 +24,7 @@ export function initHud(app) {
     room: E("hud-room"), ping: E("hud-ping"), net: E("hud-net"),
     timer: E("hud-timer"), objective: E("hud-objective"),
     killfeed: E("killfeed"), callout: E("hud-callout"), toasts: E("hud-toasts"),
-    respawn: E("hud-respawn"), killerName: E("killer-name"), killerWeapon: E("killer-weapon"), respawnCount: E("respawn-count"), respawnLabel: E("respawn-label"), respawnTitle: E("respawn-title"),
+    respawn: E("hud-respawn"), killerName: E("killer-name"), killerWeapon: E("killer-weapon"), respawnCount: E("respawn-count"), respawnLabel: E("respawn-label"), respawnTitle: E("respawn-title"), respawnLoadout: E("respawn-loadout"), respawnKey: document.querySelector("#respawn-loadout kbd"),
     chips: E("hud-chips"), prot: E("chip-prot"), fury: E("chip-fury"), streak: E("chip-streak"), carry: E("chip-carry"),
     vitals: E("vitals"), hpFill: E("hp-fill"), shRing: E("sh-ring"), hpNum: E("hp-num"), shNum: E("sh-num"),
     weapon: E("weapon-panel"), wName: E("w-name"), wIcon: E("w-icon"), mag: E("ammo-mag"), res: E("ammo-res"), reload: E("reload-bar"), reloadFill: E("reload-fill"),
@@ -82,6 +83,7 @@ export function initHud(app) {
   $("#pause-settings").addEventListener("click", () => app.openSettings());
   $("#pause-help").addEventListener("click", () => app.openHelp());
   $("#pause-loadout").addEventListener("click", () => app.openLoadoutInGame());
+  $("#respawn-loadout").addEventListener("click", () => { if (game) game.pause(); app.openLoadoutInGame(); });
   $("#end-leave").addEventListener("click", () => { sfx.play("ui_back"); app.leave(); });
   $("#disc-menu").addEventListener("click", () => app.leave());
   $("#disc-retry").addEventListener("click", () => app.reconnect());
@@ -370,7 +372,9 @@ export function initHud(app) {
         if (who && st.teams && who.team) el.killerName.style.color = teamColor(who.team); else el.killerName.style.color = "";
       }
       const soon = s.respawnIn > 0.05;
-      set(el.respawnLabel, "rl", soon ? "Respawning in" : "Respawning");
+      set(el.respawnKey, "rk", keyName((effectiveBinds(app.settings).loadout || [])[0]));
+      set(el.respawnLoadout, "rlh", !!s.respawnHeld || app.isMenuOpen(), "hidden");
+      set(el.respawnLabel, "rl", s.respawnHeld ? (soon ? "Choosing loadout · respawn in" : "Respawning") : soon ? "Respawning in" : "Respawning");
       set(el.respawnCount, "rc", soon ? s.respawnIn.toFixed(1) : "...");
     }
 
@@ -524,6 +528,7 @@ export function initHud(app) {
       el.vitals.classList.add("hurt");
     },
     onSpawn() { st.lastDeath = null; },
+    onLoadoutRequest() { if (!app.isMenuOpen()) app.openLoadoutInGame(); },
   };
 
   function errorText(r) {

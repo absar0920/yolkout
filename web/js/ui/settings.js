@@ -10,14 +10,15 @@ let DEFAULT_BINDS = {
   fwd: ["KeyW", "ArrowUp"], back: ["KeyS", "ArrowDown"], left: ["KeyA", "ArrowLeft"], right: ["KeyD", "ArrowRight"],
   jump: ["Space"], reload: ["KeyR"], grenade: ["KeyG"], melee: ["KeyF", "KeyV"],
   swap: ["KeyQ", "KeyE"], primary: ["Digit1"], secondary: ["Digit2"], meleeKey: ["Digit3"],
-  aim: [], fire: [], scoreboard: ["Tab"], chat: ["Enter", "KeyT"], teamChat: ["KeyY"],
+  aim: ["ShiftLeft"], fire: [], scoreboard: ["Tab"], chat: ["Enter", "KeyT"], teamChat: ["KeyY"],
+  loadout: ["KeyL"],
 };
 
 export const BIND_LABELS = [
   ["fwd", "Move forward"], ["back", "Move back"], ["left", "Strafe left"], ["right", "Strafe right"], ["jump", "Jump"],
   ["reload", "Reload"], ["grenade", "Throw grenade"], ["melee", "Melee"], ["swap", "Swap weapon"],
-  ["primary", "Primary weapon"], ["secondary", "Sidearm"], ["fire", "Fire (extra key)"], ["aim", "Aim (extra key)"],
-  ["scoreboard", "Scoreboard"], ["chat", "Chat"], ["teamChat", "Team chat"],
+  ["primary", "Primary weapon"], ["secondary", "Sidearm"], ["fire", "Fire (extra key)"], ["aim", "Aim"],
+  ["scoreboard", "Scoreboard"], ["chat", "Chat"], ["teamChat", "Team chat"], ["loadout", "Change loadout (while dead)"],
 ];
 
 export function getDefaultBinds() { return DEFAULT_BINDS; }

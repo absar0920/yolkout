@@ -159,7 +159,7 @@ Right after `welcome` the server spawns the player (sends `spawn` to everyone, i
 |---|---|---|
 | `hello` | section 4.1 | first message only |
 | `i` | `{"t":"i","b":[[seq,keys,yaw,pitch,buttons,slot,rt], ...]}` | input batch, 1 to 8 entries, oldest first |
-| `ld` | `{"t":"ld","cls":"deviler","cos":{"hat":"cap","color":"mint","stamp":"none"}}` | both fields optional. `cls` takes effect at the **next spawn**, `cos` immediately. The server answers by broadcasting `pu`. |
+| `ld` | `{"t":"ld","cls":"deviler","cos":{"hat":"cap","color":"mint","stamp":"none"},"hold":0}` | all fields optional. `cls` takes effect at the **next spawn**, `cos` immediately; when either is present the server answers by broadcasting `pu`. `hold:1` (only honoured while dead) keeps the player down while they pick a loadout, for at most **10 s** past their normal respawn time; `hold:0` releases it (respawning at once if the timer has passed). Spawning always clears the hold. |
 | `chat` | `{"t":"chat","m":"gg","tm":0}` | `tm` 1 = team-only (team modes) |
 | `ping` | `{"t":"ping","c":123456,"rtt":48}` | `c` = client clock ms (integer). `rtt` = last measured RTT ms (display only). |
 

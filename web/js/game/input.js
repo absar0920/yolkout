@@ -8,13 +8,14 @@ export const DEFAULT_BINDS = {
   fwd: ["KeyW", "ArrowUp"], back: ["KeyS", "ArrowDown"], left: ["KeyA", "ArrowLeft"], right: ["KeyD", "ArrowRight"],
   jump: ["Space"], reload: ["KeyR"], grenade: ["KeyG"], melee: ["KeyF", "KeyV"],
   swap: ["KeyQ", "KeyE"], primary: ["Digit1"], secondary: ["Digit2"], meleeKey: ["Digit3"],
-  aim: [], fire: [], scoreboard: ["Tab"], chat: ["Enter", "KeyT"], teamChat: ["KeyY"],
+  aim: ["ShiftLeft"], fire: [], scoreboard: ["Tab"], chat: ["Enter", "KeyT"], teamChat: ["KeyY"],
+  loadout: ["KeyL"],
 };
 
 export class Input {
   /**
    * @param {HTMLElement} el     element that receives clicks / pointer lock (the canvas)
-   * @param {object} cb          {onLockChange(locked), onScoreboard(show), onChat(teamOnly), onLook(dx,dy), onWheel(dir)}
+   * @param {object} cb          {onLockChange(locked), onScoreboard(show), onChat(teamOnly), onLook(dx,dy), onWheel(dir), onLoadout()}
    * @param {object} settings    {sensitivity, adsSensitivity, invertY, toggleAds, binds, gamepadSensitivity}
    */
   constructor(el, cb, settings) {
@@ -132,6 +133,7 @@ export class Input {
       if (this._is("primary", code)) this.slot = 0;
       if (this._is("secondary", code)) this.slot = 1;
       if (this._is("aim", code) && this.settings.toggleAds) this.adsToggled = !this.adsToggled;
+      if (this._is("loadout", code) && this.cb.onLoadout) this.cb.onLoadout();
     } else {
       this.held.delete(code);
     }

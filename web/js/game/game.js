@@ -41,6 +41,8 @@ export const DEFAULT_SETTINGS = {
 };
 
 const tmpV = new THREE.Vector3();
+// Longest a dead player choosing a loadout can delay their respawn (server: respawnHoldMaxSec).
+const RESPAWN_HOLD_MAX_MS = 10000;
 const FLAG = { ALIVE: 1, GROUND: 2, AIM: 4, RELOAD: 8, PROT: 16, CARRY: 32, FURY: 64, SWITCH: 128, FIRED: 256 };
 
 export class Game {
@@ -78,6 +80,12 @@ export class Game {
       onChat: (team) => this._openChat(team),
       onWheel: () => { this.input.slot = this.input.slot ? 0 : 1; },
       onMenu: () => { this.input.unlock(); this._setPaused(true); },
+      // L on the death screen: release the mouse and let the UI open the loadout
+      onLoadout: () => {
+        if (this.alive) return;
+        this.input.unlock(); this._setPaused(true);
+        this._cb("onLoadoutRequest");
+      },
       onLockError: () => this._cb("onPointerLockError"),
     }, this.settings);
 
@@ -409,6 +417,7 @@ export class Game {
       if (!this.alive) {
         // alive on the server but we have not seen our spawn yet (or missed it): adopt
         this.alive = true;
+        this.holding = false;
         this.deathCam = null;
         this.predictor.pending.length = 0;
       }
@@ -443,6 +452,7 @@ export class Game {
       this.deathCam = null;
       this.killer = null;
       this.respawnAt = 0;
+      this.holding = false;
       this.corr.set(0, 0, 0);
       this.input.slot = 0;
       this.hp = this.data.rules.combat.maxHp; this.sh = 0;
@@ -1042,7 +1052,8 @@ export class Game {
       grenades: P ? P.ws.gren : 0, maxGrenades: W.weapons[W.grenade].maxCount,
       ads: this.adsT > 0.5, scoped: !!(wcur && wcur.adsFov <= 36 && this.adsT > 0.9),
       spawnProtected: (myFlags & FLAG.PROT) !== 0, carrying: (myFlags & FLAG.CARRY) !== 0,
-      respawnIn: this.alive ? 0 : this.respawnAt ? Math.max(0, (this.respawnAt - performance.now()) / 1000) : 0,
+      respawnIn: this.alive ? 0 : this.respawnAt ? Math.max(0, (this.respawnAt + (this.holding ? RESPAWN_HOLD_MAX_MS : 0) - performance.now()) / 1000) : 0,
+      respawnHeld: !this.alive && !!this.holding,
       killer: !this.alive && this.killer ? this._who(this.killer) : null,
       match: { state: this.match.state, mode: this.match.mode, modeName: md.name || this.match.mode, map: this.match.map,
         mapName: (this.data.mapIndex.maps.find((x) => x.id === this.match.map) || {}).name || this.match.map,
@@ -1061,10 +1072,15 @@ export class Game {
     this.closeChat();
   }
 
-  setLoadout({ cls, cosmetics } = {}) {
+  /** hold: true asks the server to keep a dead player down (capped) while they choose; false releases. */
+  setLoadout({ cls, cosmetics, hold } = {}) {
     const msg = { t: "ld" };
     if (cls && this.data.weapons.primaries.includes(cls)) { msg.cls = cls; this.cls = cls; }
     if (cosmetics) { this.cos = Object.assign({}, this.cos, cosmetics); msg.cos = this.cos; }
+    if (hold !== undefined) {
+      this.holding = !!hold && !this.alive;
+      msg.hold = this.holding ? 1 : 0;
+    }
     if (this.conn) this.conn.send(msg);
   }
 

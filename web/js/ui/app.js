@@ -177,13 +177,23 @@ app.onDialogClosed = () => { if (app.hud) app.hud.refreshOverlays(); };
 app.openSettings = () => { app.settingsDlg.open(); app.hud.refreshOverlays(); };
 app.openHelp = () => { app.helpDlg.open(); app.hud.refreshOverlays(); };
 app.openLoadoutInGame = () => {
+  const g = app.game;
+  const dead = !!(g && !g.getState().alive);
+  // While dead, ask the server to hold the respawn so you come back with the new gun.
+  if (dead) { try { g.setLoadout({ hold: true }); } catch (e) { console.warn(e); } }
   app.loadout.open((saved) => {
-    if (saved && app.game) {
-      try { app.game.setLoadout({ cls: app.profile.cls, cosmetics: app.profile.cos }); } catch (e) { console.warn(e); }
-      toast("Loadout saved: new primary at your next respawn.", "info");
+    const game = app.game;
+    if (game) {
+      const stillDead = !game.getState().alive;
+      const patch = saved ? { cls: app.profile.cls, cosmetics: app.profile.cos } : {};
+      if (dead) patch.hold = false;
+      if (saved || dead) { try { game.setLoadout(patch); } catch (e) { console.warn(e); } }
+      if (saved) toast(stillDead ? "Loadout saved: respawning with your new primary." : "Loadout saved: new primary at your next respawn.", "info");
+      // Saving from the death screen drops you straight back in (the click is the user gesture pointer lock needs).
+      if (saved && dead) { try { game.resume(); } catch (e) { console.warn(e); } }
     }
     app.hud.refreshOverlays();
-  }, { inGame: true });
+  }, { inGame: true, dead });
   app.hud.refreshOverlays();
 };
 

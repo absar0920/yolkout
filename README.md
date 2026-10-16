@@ -26,7 +26,7 @@ Requirements: Go >= 1.23 and Node 22. Node is only used for scripts and tests, n
 
 Open http://localhost:8080, type a name and press **PLAY**. Quickplay drops you into the fullest public room for the chosen
 mode, and server bots fill the room up to 4 players while you wait for humans. **Practice vs bots** runs a complete
-in-browser server and works offline. **Create room** makes a private room. Share its 6-character code or the `?room=CODE` link.
+in-browser server and works offline. **Create room** makes a private, invite-only room with no bots. Share its 6-character code or the `?room=CODE` link.
 
 ## Controls
 
@@ -35,7 +35,7 @@ in-browser server and works offline. **Create room** makes a private room. Share
 | Move | `W A S D` or arrow keys | left stick |
 | Look | mouse (pointer lock: click the game) | right stick |
 | Fire | left mouse button | RT |
-| Aim down sights | right mouse button (hold, or toggle in Settings) | LT |
+| Aim down sights | right mouse button or Left Shift (hold, or toggle in Settings) | LT |
 | Jump | `Space` | A |
 | Reload | `R` | X |
 | Grenade | `G` or middle mouse button | RB |
@@ -43,6 +43,7 @@ in-browser server and works offline. **Create room** makes a private room. Share
 | Swap weapon | `Q` / `E`, mouse wheel, or `1` primary / `2` sidearm | Y or LB |
 | Scoreboard | hold `Tab` | Back |
 | Chat / team chat | `Enter` or `T` / `Y` | |
+| Change loadout while dead | `L`, or the button on the death screen (holds your respawn up to 10 s) | |
 | Pause menu | `Esc` | Start |
 
 Every key can be rebound in **Settings**, which also has sensitivity, ADS sensitivity, invert Y, field of view,
@@ -148,7 +149,7 @@ scripts/
 | `-shared` | `../shared` | serves `data/` at `/data/` and `ref/` at `/ref/` |
 | `-data` | `<shared>/data` | game data directory |
 | `-stats` | `yolkout-stats.json` | leaderboard file (`""` = memory only) |
-| `-bots` | `4` | fill rooms with server bots up to N players while a human is present (0 = off) |
+| `-bots` | `4` | fill public rooms with server bots up to N players while a human is present (0 = off). Private rooms never get bots. |
 | `-maxrooms` | `200` | live room cap |
 | `-maxconns` | `4000` | WebSocket connection cap |
 | `-maxconnsperip` | `8` | WebSocket connections per client IP (-1 = unlimited; loopback is exempt) |

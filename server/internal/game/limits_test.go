@@ -206,3 +206,19 @@ func TestDeadInputsDoNotSetSlot(t *testing.T) {
 		t.Fatalf("dead input changed slot to %d", p.Slot)
 	}
 }
+
+func TestPrivateRoomsGetNoBots(t *testing.T) {
+	for _, priv := range []bool{false, true} {
+		h := newHarness(t, "ffa", 4)
+		h.r.Priv = priv
+		h.join("Host", "benedict")
+		h.ticks(10)
+		want := 3
+		if priv {
+			want = 0
+		}
+		if n := h.r.botCount(); n != want {
+			t.Fatalf("priv=%v: %d bots, want %d", priv, n, want)
+		}
+	}
+}

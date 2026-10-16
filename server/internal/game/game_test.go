@@ -677,3 +677,49 @@ func TestEarlyRewindDoesNotPanic(t *testing.T) {
 	c.mu.Unlock()
 	h.ticks(2)
 }
+
+// A dead player picking a loadout holds their respawn (capped) and comes back
+// with the new primary as soon as they save.
+func TestLoadoutHoldDelaysRespawn(t *testing.T) {
+	h := newHarness(t, "ffa", 0)
+	c, a := h.join("A", "benedict")
+	_, b := h.join("B", "benedict")
+	h.ticks(2)
+	hold := func(v int, cls *string) {
+		c.mu.Lock()
+		c.lds = append(c.lds, ldReq{cls: cls, hold: &v})
+		c.mu.Unlock()
+		h.r.tick()
+	}
+	h.r.kill(a, b.ID, "benedict", false)
+	hold(1, nil)
+	if !a.HoldRespawn {
+		t.Fatal("hold not set while dead")
+	}
+	h.ticks(int(h.r.RespawnAtDelta(a)) + 30)
+	if a.Alive {
+		t.Fatal("respawned while holding")
+	}
+	cls := "piercer"
+	hold(0, &cls)
+	if !a.Alive || a.CurCls != "piercer" || a.HoldRespawn {
+		t.Fatalf("after save: alive=%v cls=%s hold=%v", a.Alive, a.CurCls, a.HoldRespawn)
+	}
+
+	// the hold is capped
+	h.r.kill(a, b.ID, "benedict", false)
+	hold(1, nil)
+	h.ticks(int(h.r.RespawnAtDelta(a) + h.r.ticks(respawnHoldMaxSec)) + 2)
+	if !a.Alive {
+		t.Fatal("hold should expire")
+	}
+
+	// hold is ignored while alive
+	hold(1, nil)
+	if a.HoldRespawn {
+		t.Fatal("hold set while alive")
+	}
+}
+
+// RespawnAtDelta is the number of ticks until p's normal respawn time.
+func (r *Room) RespawnAtDelta(p *Player) int64 { return max(0, p.RespawnAt-r.k) }

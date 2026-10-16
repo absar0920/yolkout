@@ -11,6 +11,8 @@ import * as Sim from "../engine/physics.js";
 const BOT_NAMES = ["Eggward", "Shelldon", "Yolanda", "Hardboil", "Sunnyside", "Scrambles", "Omeletta",
   "Crackers", "Dippy", "Benny", "Huevo", "Albumen", "Coddle", "Brunchy", "Speckle", "Toasty"];
 
+// Longest a dead player choosing a loadout can delay their respawn (PROTOCOL.md, ld message).
+const RESPAWN_HOLD_MAX_SEC = 10;
 const F = { ALIVE: 1, GROUND: 2, AIM: 4, RELOAD: 8, PROT: 16, CARRY: 32, FURY: 64, SWITCH: 128, FIRED: 256 };
 
 const JITTER_BUFFER = 3; // inputs of backlog before the room consumes more than one per tick
@@ -117,6 +119,8 @@ export class LocalServer {
         break;
       }
       case "ld":
+        if (m.hold === 0 || m.hold === 1) P.hold = m.hold === 1 && !P.alive;
+        if (!m.cls && !m.cos) break;
         if (m.cls && this.d.weapons.weapons[m.cls] && this.d.weapons.primaries.includes(m.cls)) P.cls = m.cls;
         if (m.cos && typeof m.cos === "object") P.cos = this._cos(m.cos);
         this._emit({ t: "pu", p: this._roster(P) });
@@ -256,6 +260,7 @@ export class LocalServer {
   // ------------------------------------------------------------------ spawning
 
   _spawn(P) {
+    P.hold = false;
     const sp = this.map.spawns;
     let cands = this.mode.teams ? sp.filter((s) => s.team === P.tm) : sp;
     if (!cands.length) cands = sp;
@@ -335,7 +340,7 @@ export class LocalServer {
       if (P.alive) {
         if (this.k - P.lastDmgK >= C.regenDelay * tr && P.hp < C.maxHp) P.hp = Math.min(C.maxHp, P.hp + C.regenRate / tr);
         if (P.furyEnd && this.k >= P.furyEnd) P.furyEnd = 0;
-      } else if (live && P.respawnAt && this.k >= P.respawnAt) {
+      } else if (live && P.respawnAt && this.k >= P.respawnAt && !(P.hold && this.k < P.respawnAt + RESPAWN_HOLD_MAX_SEC * tr)) {
         P.respawnAt = 0;
         this._spawn(P);
       }

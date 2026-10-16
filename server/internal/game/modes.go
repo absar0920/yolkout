@@ -32,7 +32,12 @@ func (r *Room) pickTeam() int {
 }
 
 // spawn places p at a spawn point chosen per PROTOCOL.md 10.3.
+// respawnHoldMaxSec caps how long a dead player choosing a loadout can delay
+// their respawn past the normal timer (PROTOCOL.md, ld message).
+const respawnHoldMaxSec = 10
+
 func (r *Room) spawn(p *Player) {
+	p.HoldRespawn = false
 	var cands []data.Spawn
 	if r.Mode.Teams {
 		for _, s := range r.Map.Spawns {
@@ -153,7 +158,7 @@ func (r *Room) stepVitals() {
 			if p.ProtUntil != 0 && r.k >= p.ProtUntil {
 				p.ProtUntil = 0
 			}
-		} else if r.k >= p.RespawnAt {
+		} else if r.k >= p.RespawnAt && !(p.HoldRespawn && r.k < p.RespawnAt+r.ticks(respawnHoldMaxSec)) {
 			r.spawn(p)
 		}
 	}

@@ -61,6 +61,7 @@ type Player struct {
 	HP             float64
 	SH             int
 	RespawnAt      int64
+	HoldRespawn    bool  // dead player is picking a loadout; respawn waits up to respawnHoldMaxSec
 	ProtUntil      int64 // spawn protection active while k < ProtUntil
 	LastDamageTick int64
 	FuryUntil      int64
@@ -546,6 +547,12 @@ func (r *Room) drainInboxes() {
 			r.to(p, mustJSON(sysMsg{T: "sys", M: n}))
 		}
 		for _, ld := range lds {
+			if ld.hold != nil {
+				p.HoldRespawn = *ld.hold == 1 && !p.Alive
+			}
+			if ld.cls == nil && ld.cos == nil {
+				continue
+			}
 			if ld.cls != nil && r.g.IsPrimary(*ld.cls) {
 				p.Cls = *ld.cls
 			}

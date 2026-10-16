@@ -486,6 +486,17 @@ body.in-game .loading { background: rgba(13, 12, 16, .85); }
 .resp-count { font-size: .95rem; opacity: .9; }
 .hud.sb-open .respawn, .hud.sb-open .callout { display: none; }
 .resp-count b { font-size: 1.6rem; font-variant-numeric: tabular-nums; color: #fff; }
+/* the respawn panel sits above click-to-play (so its button is clickable) but below pause / results */
+.respawn { z-index: 2; }
+.hud.is-unlocked .respawn { top: 68%; } /* clear of the click-to-play help text */
+.click-to-play { z-index: 1; }
+.pause, .match-end, .disconnected { z-index: 3; }
+.resp-loadout {
+  pointer-events: auto; margin-top: 6px; padding: 4px 12px; border: 0; border-radius: 999px;
+  background: var(--yolk); color: #1d1a22; font-weight: 800; font-size: .85rem; text-shadow: none;
+}
+.resp-loadout:hover { filter: brightness(1.08); }
+.resp-loadout kbd { margin-right: 4px; font-size: .72rem; }
 
 .hud-chips { position: absolute; bottom: 140px; left: 50%; translate: -50% 0; display: flex; gap: 8px; }
 .chip-prot { background: rgba(74, 168, 255, .75); }

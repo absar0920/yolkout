@@ -21,7 +21,8 @@
 //       onHud(state), onKillfeed(ev), onScoreboard(data), onScoreboardToggle(visible),
 //       onChat(msg), onChatOpen({teamOnly}), onMatchStart(info), onMatchEnd(data),
 //       onDisconnect(reason), onPing(ms), onRoom(info), onPauseChange(paused),
-//       onStreak(ev), onPickup(ev), onFlag(ev), onHitConfirm(ev), onDamaged(ev), onSpawn(ev)
+//       onStreak(ev), onPickup(ev), onFlag(ev), onHitConfirm(ev), onDamaged(ev), onSpawn(ev),
+//       onLoadoutRequest()   player pressed the loadout key while dead (mouse already released)
 //     },
 //   });
 //   // resolves after `welcome` + map load; rejects with Error{code} (room_full, no_room, version, socket, timeout, ...)
@@ -29,7 +30,8 @@
 //   game.stop()                       leave the room and free everything
 //   game.sendChat(text, teamOnly)     send chat and close the chat state (call resume() afterwards)
 //   game.setSettings(partial)         live settings change
-//   game.setLoadout({cls, cosmetics}) primary applies at next spawn, cosmetics immediately
+//   game.setLoadout({cls, cosmetics, hold}) primary applies at next spawn, cosmetics immediately;
+//                                     hold: true keeps a dead player down (max 10 s) while choosing, false releases
 //   game.pause() / game.resume()      release / re-acquire pointer lock (resume must run in a user gesture)
 //   game.lockPointer()                request pointer lock (user gesture)
 //   game.getState()                   same object as the last onHud(state)

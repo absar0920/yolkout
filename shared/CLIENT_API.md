@@ -53,7 +53,7 @@ Call `stop()` on the previous controller before starting a new game.
 | `sendChat(text, teamOnly=false)` | send a chat line (at most 120 characters) and leave chat mode. Call `resume()` afterwards, inside the same key or click handler, to re-lock the mouse. |
 | `cancelChat()` | leave chat mode without sending. Call `resume()` afterwards. |
 | `setSettings(partial)` | apply settings live |
-| `setLoadout({cls, cosmetics})` | sends `ld`. A new primary applies at the next spawn; cosmetics apply immediately. |
+| `setLoadout({cls, cosmetics, hold})` | sends `ld`. A new primary applies at the next spawn; cosmetics apply immediately. `hold: true` (while dead) keeps you down for up to 10 s while choosing; `hold: false` releases. |
 | `pause()` | release pointer lock. Input is ignored and the game keeps running, because this is multiplayer. |
 | `resume()` | request pointer lock (**must be called from a user gesture**). Paused state ends when the lock is granted. |
 | `lockPointer()` | request pointer lock (user gesture), for example from a "click to play" overlay |
@@ -86,6 +86,7 @@ Clicking the game canvas also requests pointer lock (setting `clickToLock`).
 | `onHitConfirm(ev)` | you damaged someone: `{victim, damage, headshot, hp, sh, weapon}` |
 | `onDamaged(ev)` | you took damage: `{attacker, damage, headshot, hp, sh, weapon, from:[x,y,z]}` |
 | `onSpawn(ev)` | you spawned: `{x,y,z,cls}` |
+| `onLoadoutRequest()` | the loadout key (default `L`) was pressed while dead; the mouse is already released and the game paused |
 
 ### HUD state (`onHud` / `getState()`)
 
