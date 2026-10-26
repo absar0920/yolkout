@@ -25,8 +25,9 @@ const _e = new THREE.Euler();
  * out = [tail, head]. Pure (exported for tests).
  */
 export function tracerSegment(tr, out = [0, 0]) {
-  const head = Math.min(tr.L, tr.t * tr.speed);
-  const tail = Math.max(0, head - tr.len);
+  const travel = tr.t * tr.speed;
+  const head = Math.min(tr.L, travel);
+  const tail = Math.min(head, Math.max(0, travel - tr.len));
   out[0] = tail; out[1] = head;
   return out;
 }
@@ -594,4 +595,3 @@ export class Effects {
     this.scene.remove(this.group);
   }
 }
-

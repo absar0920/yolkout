@@ -83,6 +83,7 @@ adapted to 100 hp eggs (`shared/data/weapons.json`, `zones`). Hit markers, the k
 Movement has separate ground acceleration and friction, more air control and 0.1 s of coyote time (you can still jump just after
 running off a ledge). All of it is in the shared sim, so prediction stays exact. The camera is interpolated between the
 60 Hz ticks, eases up and down stairs (no 0.5 u hops), dips on landing, leans slightly when strafing and zooms over each gun's aim time.
+Single-projectile weapons fire along the crosshair while moving or firing repeatedly; the shotgun retains its pellet spread.
 
 **Look and feel:** everything is a stylised cartoon built in code (no downloaded assets): toon-shaded guns, melee weapons,
 grenade and rocket with bevelled chunky silhouettes and ink outlines, and eggs with an animated face (blinking, brows that react).

@@ -36,13 +36,10 @@ for (let i = 0; i < 4000; i++) {
   assert.ok(Math.abs(far - seg[1]) < 1e-6, `far end ${far} == head ${seg[1]}`);
   checks++;
 }
-// the v1 bug: head composed at the head pointed the box ahead of the bullet; at head == L it covered [L, L + len]
+// Once the streak reaches a wall, its tail must keep moving until the whole streak disappears.
 {
   const tr = { sx: 0, sy: 0, sz: 0, dx: 1, dy: 0, dz: 0, L: 10, t: 1, speed: 240, len: 5, width: 0.02 };
-  tracerMatrix(tr, m);
-  let far = -Infinity;
-  for (let k = 0; k < pos.count; k++) far = Math.max(far, v.fromBufferAttribute(pos, k).applyMatrix4(m).x);
-  assert.ok(far <= 10 + 1e-9, `wall at x=10: streak reaches ${far}`);
+  assert.equal(tracerMatrix(tr, m), false, "streak leaves the wall instead of remaining stuck there");
   checks++;
 }
 // remote egg behind low cover: the eye ray clears a crate, the (lower) muzzle -> impact line does not.
