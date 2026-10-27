@@ -47,7 +47,8 @@ const launchArgs = ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsaf
   "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"];
 async function launch() {
   try {
-    return await chromium.launch({ headless: !HEADED, args: launchArgs });
+    // The separate Chromium headless shell rejects pointer lock; full Chromium supports it.
+    return await chromium.launch({ headless: !HEADED, channel: "chromium", args: launchArgs });
   } catch (e) {
     for (const p of ["/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome", "/snap/bin/chromium"]) {
       try { return await chromium.launch({ headless: !HEADED, executablePath: p, args: launchArgs }); } catch { /* next */ }
