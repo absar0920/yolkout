@@ -8,7 +8,7 @@
       "teams": false, "objective": "none",
       "scoreLimit": 25, "scoreUnit": "kills", "timeLimitSec": 480, "respawnSec": 3,
       "points": { "kill": 100, "headshotBonus": 25, "streakBonus": 50 },
-      "maps": ["barnyard", "countertop", "hatchery", "diner"]
+      "maps": ["barnyard", "countertop", "hatchery", "diner", "rose_gorge", "cloud_terrace", "reservoir_grove", "tuff_labyrinth", "boulder_bazaar", "granite_ring", "mesa_alcove", "ash_quarter", "riverbend_plain", "basalt_channels", "highland_caravan", "atlantic_outpost", "forest_causeway", "monolith_gardens", "volcanic_coast", "coral_port", "pine_camp", "lakeside_cabins", "marsh_boardwalk", "canyon_camp", "island_crossings", "frozen_creek", "redwood_trails", "ridge_watch", "quarry_lookout", "desert_airfield", "beacon_cliffs", "glacier_pass", "windfarm_heights", "dry_reservoir", "hedge_maze", "cargo_grid", "drainworks", "rooftop_block", "corn_maze", "neon_lanes"]
     },
     "teams": {
       "name": "Team Scramble", "short": "TDM",
@@ -16,7 +16,7 @@
       "teams": true, "objective": "none",
       "scoreLimit": 50, "scoreUnit": "teamKills", "timeLimitSec": 600, "respawnSec": 4,
       "points": { "kill": 100, "headshotBonus": 25, "streakBonus": 50 },
-      "maps": ["barnyard", "countertop", "hatchery", "diner"]
+      "maps": ["barnyard", "countertop", "hatchery", "diner", "rose_gorge", "cloud_terrace", "reservoir_grove", "tuff_labyrinth", "boulder_bazaar", "granite_ring", "mesa_alcove", "ash_quarter", "riverbend_plain", "basalt_channels", "highland_caravan", "atlantic_outpost", "forest_causeway", "monolith_gardens", "volcanic_coast", "coral_port", "pine_camp", "lakeside_cabins", "marsh_boardwalk", "canyon_camp", "island_crossings", "frozen_creek", "redwood_trails", "ridge_watch", "quarry_lookout", "desert_airfield", "beacon_cliffs", "glacier_pass", "windfarm_heights", "dry_reservoir", "hedge_maze", "cargo_grid", "drainworks", "rooftop_block", "corn_maze", "neon_lanes"]
     },
     "nest": {
       "name": "Nest Raid", "short": "RAID",
@@ -25,7 +25,7 @@
       "scoreLimit": 3, "scoreUnit": "captures", "timeLimitSec": 600, "respawnSec": 5,
       "points": { "kill": 100, "headshotBonus": 25, "streakBonus": 50, "capture": 300, "return": 50, "carrierKill": 50, "take": 25 },
       "nest": { "touchRadius": 1.2, "dropReturnSec": 20, "carrierMoveMul": 1.0 },
-      "maps": ["barnyard", "countertop", "hatchery", "diner"]
+      "maps": ["barnyard", "countertop", "hatchery", "diner", "rose_gorge", "cloud_terrace", "reservoir_grove", "tuff_labyrinth", "boulder_bazaar", "granite_ring", "mesa_alcove", "ash_quarter", "riverbend_plain", "basalt_channels", "highland_caravan", "atlantic_outpost", "forest_causeway", "monolith_gardens", "volcanic_coast", "coral_port", "pine_camp", "lakeside_cabins", "marsh_boardwalk", "canyon_camp", "island_crossings", "frozen_creek", "redwood_trails", "ridge_watch", "quarry_lookout", "desert_airfield", "beacon_cliffs", "glacier_pass", "windfarm_heights", "dry_reservoir", "hedge_maze", "cargo_grid", "drainworks", "rooftop_block", "corn_maze", "neon_lanes"]
     }
   },
   "teams": {

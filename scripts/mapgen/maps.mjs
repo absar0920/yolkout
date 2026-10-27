@@ -1,6 +1,12 @@
 // Original Yolkout arenas. Coordinates: Y up, ground top at y=0 unless noted.
 // Team 1 (Sunnies) and Team 2 (Speckles) halves are 180/90-degree rotations so layouts are fair.
 import { MapBuilder } from "./lib.mjs";
+import { EAST_MAPS } from "./heritage-east.mjs";
+import { WORLD_MAPS } from "./heritage-world.mjs";
+import { MIDDLE_MAPS } from "./heritage-middle.mjs";
+import { LARGE_WILD_MAPS } from "./large_wild.mjs";
+import { LARGE_PRECISION_MAPS } from "./large_precision.mjs";
+import { LARGE_MAZE_MAPS } from "./large_mazes.mjs";
 
 const PI = Math.PI;
 const ALL = ["ffa", "teams", "nest"];
@@ -297,4 +303,12 @@ export function diner() {
   return m.build();
 }
 
-export const ALL_MAPS = [barnyard, countertop, hatchery, diner];
+export const MAP_GROUPS = [
+  { label: "Original arenas", builders: [barnyard, countertop, hatchery, diner] },
+  { label: "Historic landscapes", builders: [...EAST_MAPS, ...MIDDLE_MAPS, ...WORLD_MAPS] },
+  { label: "Outdoors and water", builders: LARGE_WILD_MAPS },
+  { label: "Long range", builders: LARGE_PRECISION_MAPS },
+  { label: "Mazes and city", builders: LARGE_MAZE_MAPS },
+];
+
+export const ALL_MAPS = MAP_GROUPS.flatMap((group) => group.builders);

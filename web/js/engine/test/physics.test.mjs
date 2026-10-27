@@ -171,6 +171,38 @@ const stateArr = (ps) => [ps.x, ps.y, ps.z, ps.vx, ps.vy, ps.vz, ps.onGround ? 1
   console.log("offline smoke:", JSON.stringify(seen));
 }
 
+// 4b. practice only fetches the selected map at startup and waits for a later map to load.
+{
+  const requested = [];
+  let releaseNext;
+  const nextReady = new Promise((resolve) => { releaseNext = resolve; });
+  const practiceData = {
+    ...data,
+    modes: { ...data.modes, modes: { ...data.modes.modes,
+      ffa: { ...data.modes.modes.ffa, maps: ["barnyard", "countertop"] } } },
+    async map(id) {
+      requested.push(id);
+      if (id === "countertop") await nextReady;
+      return data.map(id);
+    },
+  };
+  const ls = new LocalServer(practiceData, { mode: "ffa", map: "barnyard", bots: 0 });
+  await ls.init();
+  ok(JSON.stringify(requested) === JSON.stringify(["barnyard"]), "practice startup fetches only the selected map");
+  ls._hello({ name: "Tester", cls: "benedict", mel: "pan", cos: {} });
+  ls.stop(); // drive intermission ticks by hand
+  ls._end();
+  ok(JSON.stringify(requested) === JSON.stringify(["barnyard", "countertop"]), "practice prefetches the next map at intermission");
+  ls.nextStartK = ls.k;
+  ls._tick();
+  ok(ls.state === "ended" && ls.mapId === "barnyard", "practice waits for the next map before starting");
+  releaseNext();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  ls._tick();
+  ok(ls.state === "live" && ls.mapId === "countertop" && ls.world === ls.maps.countertop.world,
+    "practice switches map and collision world after loading");
+}
+
 // 5. localserver combat: hit zones on the wire, melee windup + knockback, bogus mel, straight rocket
 {
   const ls = new LocalServer(data, { mode: "ffa", bots: 0 });

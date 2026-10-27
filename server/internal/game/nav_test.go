@@ -6,8 +6,9 @@ import "testing"
 func TestNavGraphConnectsObjectives(t *testing.T) {
 	g := loadGame(t)
 	m := NewManager(g, Config{}, nil)
-	for _, mapID := range []string{"barnyard", "countertop", "hatchery", "diner"} {
-		r := newRoom(m, "NAV01", g.Modes.Modes["nest"], mapID, false, 1)
+	nestMode := g.Modes.Modes["nest"]
+	for _, mapID := range nestMode.Maps {
+		r := newRoom(m, "NAV01", nestMode, mapID, false, 1)
 		var goals [][3]float64
 		for _, n := range r.Map.Nests {
 			goals = append(goals, n.Pos)

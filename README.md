@@ -5,7 +5,7 @@
 **Yolkout** is a free, fast multiplayer first-person shooter that runs in the browser. Every player is an armed egg.
 It has smooth arcade movement, seven primary weapons plus a sidearm with PUBG-style hit zones, grenades, four kitchen melee weapons
 (pick one: rolling pin, frying pan, whisk or spatula), killstreaks, and three modes
-(Free-For-All, Team Scramble, Nest Raid) on four hand-built arenas. You crack eggs, not wallets: **there are no ads, no
+(Free-For-All, Team Scramble, Nest Raid) on 40 hand-built arenas. You crack eggs, not wallets: **there are no ads, no
 analytics, no trackers and no purchases, and every cosmetic is unlocked for everyone.**
 
 Yolkout is an original game in the "egg shooter" genre. All code, names, maps, weapons, art, sounds and data in this repo are original.
@@ -98,8 +98,7 @@ your screen and on the HUD egg, with a yolk tint at the last stage), and heal ba
 zone (gold for the head, white body, smaller grey for limbs, red for a kill).
 Tracers always end at the first solid hit, so shots into a wall never streak out of its far side.
 
-* **Maps:** **Barnyard Brawl** (a barn with a hayloft, coops, silos), **Countertop** (a giant kitchen with a sink canyon, a spoon bridge and a pancake tower),
-  **The Hatchery** (an egg factory with a catwalk ring and a central pit), **Sunrise Diner** (booths, a rooftop under the neon sign, trailers).
+* **Maps:** 40 arenas: four original egg-world locations, 16 historically inspired landscapes, and 20 larger original camp, water, long-range, and maze settings. See [the map collection](docs/MAPS.md) for every layout and its design references.
 * **Modes:**
   * **Free-For-All:** first to 25 kills, 8 min.
   * **Team Scramble:** Sunnies vs Speckles, first team to 50 kills, 10 min.
@@ -155,7 +154,7 @@ scripts/
   state, replaying unacknowledged inputs) and interpolates remote players and projectiles 100 ms behind.
 * **Determinism:** shot spread comes from a seeded mulberry32 keyed by (player, input seq, pellet), so the client's tracers match the server's hits.
   Collision is AABB-only (maps are boxes, and ramps are 0.5 u stair steps), with Quake-style step-up and step-down. The Go port
-  matches the JS reference within 1e-9 on every test vector, including the client's own prediction vectors on all four maps.
+  matches the JS reference within 1e-9 on every test vector, including the client's own prediction vectors on the original four maps. The map validator and bot navigation test cover every arena in the rotation.
 * **Wire:** compact JSON over WebSocket. Snapshots use positional arrays. The server batches each tick's messages into one frame
   and compresses frames of 256 bytes or more with permessage-deflate (BestSpeed, no context takeover).
 * **Data flows one way:** `shared/data` is loaded by the server from disk (`-shared ../shared`) and by the client over HTTP
@@ -218,5 +217,5 @@ See `server/README.md`. The Docker image keeps the leaderboard in the `/app/var`
 
 * Edit `shared/PROTOCOL.md` **before** changing wire behaviour on either side.
 * After changing `shared/ref/sim.mjs` or `rules.json`/`weapons.json`, run `make vectors` and update the Go port until `make test` passes.
-* Maps are code: edit `scripts/mapgen/maps.mjs`, then run `make maps`. Never hand-edit the generated JSON.
+* Maps are code: edit the modules in `scripts/mapgen/`, register new builders in `ALL_MAPS`, then run `make maps`. Never hand-edit the generated JSON.
 * Before pushing, run `make test bots e2e`.

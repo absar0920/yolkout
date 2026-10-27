@@ -15,6 +15,9 @@ export function initHome(app) {
   const nameInput = $("#name-input");
   const modeHost = $("#mode-picker");
   const mapSel = $("#map-select");
+  const mapDesc = $("#map-desc");
+  const mapPreview = $("#map-preview");
+  let previewRequest = 0;
   const codeInput = $("#code-input");
   const roomsList = $("#rooms-list");
   const onlineEl = $("#online-count");
@@ -61,15 +64,76 @@ export function initHome(app) {
     const maps = data.mapIndex.maps.filter((m) => allowed.includes(m.id));
     clear(mapSel);
     mapSel.appendChild(h("option", { value: "" }, "Any map"));
-    for (const m of maps) mapSel.appendChild(h("option", { value: m.id }, m.name));
+    const groups = new Map();
+    for (const m of maps) {
+      const label = m.group || "Maps";
+      if (!groups.has(label)) {
+        const group = h("optgroup", { label });
+        mapSel.appendChild(group);
+        groups.set(label, group);
+      }
+      groups.get(label).appendChild(h("option", { value: m.id }, m.name));
+    }
     if (!maps.some((m) => m.id === profile.map)) profile.map = "";
     mapSel.value = profile.map;
-    mapSel.title = (maps.find((m) => m.id === profile.map) || {}).desc || "Pick a random map from the rotation";
+    describeMap(maps);
+  }
+  function describeMap(maps) {
+    const selected = maps.find((m) => m.id === profile.map);
+    mapSel.title = selected?.desc || "Pick a random map from the rotation";
+    mapDesc.textContent = selected
+      ? `${selected.desc} Quickplay uses this choice when it creates a room.`
+      : `Random from ${maps.length} arenas. Choose one for practice or a new room.`;
+    showMapPreview(selected);
+  }
+  async function showMapPreview(selected) {
+    const request = ++previewRequest;
+    mapPreview.hidden = true;
+    if (!selected) return;
+    try {
+      const response = await fetch(`/data/maps/${encodeURIComponent(selected.id)}.json`);
+      if (!response.ok) throw new Error(String(response.status));
+      const map = await response.json();
+      if (request !== previewRequest) return;
+      drawMapPreview(map);
+      mapPreview.setAttribute("aria-label", `${map.name} from above; yellow and blue dots mark team nests`);
+      mapPreview.hidden = false;
+    } catch { /* A missing preview does not prevent joining the map. */ }
+  }
+  function drawMapPreview(map) {
+    const ctx = mapPreview.getContext("2d");
+    const w = mapPreview.width, h = mapPreview.height;
+    const min = map.bounds.min, max = map.bounds.max;
+    const scale = Math.min((w - 20) / (max[0] - min[0]), (h - 20) / (max[2] - min[2]));
+    const ox = (w - (max[0] - min[0]) * scale) / 2;
+    const oz = (h - (max[2] - min[2]) * scale) / 2;
+    const px = (x) => ox + (x - min[0]) * scale;
+    const pz = (z) => oz + (z - min[2]) * scale;
+    ctx.fillStyle = map.palette.skyHorizon || map.palette.sky;
+    ctx.fillRect(0, 0, w, h);
+    for (const box of [...map.boxes].sort((a, b) => a.max[1] - b.max[1])) {
+      const x = px(box.min[0]), z = pz(box.min[2]);
+      const bw = (box.max[0] - box.min[0]) * scale, bh = (box.max[2] - box.min[2]) * scale;
+      ctx.globalAlpha = box.solid === false ? 0.82 : 1;
+      ctx.fillStyle = map.materials[box.mat]?.color || "#cccccc";
+      ctx.fillRect(x, z, bw, bh);
+      if (box.max[1] > 0.6 && bw > 4 && bh > 4) {
+        ctx.strokeStyle = "rgba(20,20,25,.25)";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + .75, z + .75, bw - 1.5, bh - 1.5);
+      }
+    }
+    ctx.globalAlpha = 1;
+    for (const nest of map.nests) {
+      ctx.beginPath(); ctx.arc(px(nest.pos[0]), pz(nest.pos[2]), 6, 0, Math.PI * 2);
+      ctx.fillStyle = nest.team === 1 ? "#ffc23d" : "#4aa8ff";
+      ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#232129"; ctx.stroke();
+    }
   }
   mapSel.addEventListener("change", () => {
     profile.map = mapSel.value;
     saveProfile(profile);
-    mapSel.title = (data.mapIndex.maps.find((m) => m.id === profile.map) || {}).desc || "";
+    describeMap(data.mapIndex.maps);
   });
   fillMaps();
 

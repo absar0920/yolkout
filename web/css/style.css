@@ -171,6 +171,8 @@ input[type=text]:focus-visible, select:focus-visible { outline-offset: 0; }
 .mode-short { font-weight: 900; font-size: 1.1rem; letter-spacing: .04em; }
 .mode-name { font-size: .74rem; font-weight: 700; color: var(--ink-2); }
 .mode-desc { margin: 2px 0 0; font-size: .86rem; color: var(--ink-2); min-height: 2.4em; }
+.map-desc { margin: 2px 0 0; font-size: .84rem; color: var(--ink-2); min-height: 2.4em; }
+.map-preview { display: block; width: 100%; height: auto; aspect-ratio: 30 / 11; border: 2px solid var(--ink); border-radius: 12px; background: var(--sky-hi); }
 
 .private { margin-top: 16px; padding-top: 14px; border-top: 3px dashed var(--shell-3); }
 .private h3 { margin: 0 0 8px; font-size: .82rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); }
@@ -627,13 +629,13 @@ body.in-game .loading { background: rgba(13, 12, 16, .85); }
   .style-col { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
-  .home { padding: 10px 16px 20px; }
-  .home-top { justify-content: center; }
+  .home { padding: 8px 12px 20px; }
+  .home-top { justify-content: center; gap: 4px; }
   .logo-wrap { flex-basis: 100%; text-align: center; }
-  .logo { max-width: 340px; }
+  .logo { max-width: 260px; }
   .top-nav { justify-content: center; }
   .top-nav button span { font-size: .85rem; }
-  .home-grid { grid-template-columns: 1fr; }
+  .home-grid { grid-template-columns: 1fr; gap: 12px; margin-top: 8px; }
   .egg-stage { max-width: 170px; }
   .loadout-grid { grid-template-columns: 1fr; }
   .preview-col { order: -1; }
@@ -643,9 +645,26 @@ body.in-game .loading { background: rgba(13, 12, 16, .85); }
   .sb-teams { grid-template-columns: 1fr; }
   .room-row { grid-template-columns: auto 1fr auto; }
   .room-fill { display: none; }
-}
-@media (max-width: 420px) {
+  /* Keep the main action in view even when a map preview is open. */
   .top-nav button { padding: 0 10px; }
+  .mobile-note { margin-top: 6px; padding: 7px 10px; font-size: .78rem; line-height: 1.25; }
+  .play-card { padding: 12px; }
+  .play-card .field { gap: 4px; margin-bottom: 8px; }
+  .mode-btn { padding: 5px 2px; }
+  .mode-desc { min-height: 0; margin: 0; font-size: .78rem; line-height: 1.2; }
+  .map-desc { min-height: 0; margin: 0; font-size: .75rem; line-height: 1.2; }
+  .play-card .field:has(#map-preview:not([hidden])) {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: center; column-gap: 8px;
+  }
+  .play-card .field:has(#map-preview:not([hidden])) > label,
+  .play-card .field:has(#map-preview:not([hidden])) > select { grid-column: 1 / -1; }
+  .play-card .field:has(#map-preview:not([hidden])) > .map-preview { grid-column: 1; }
+  .play-card .field:has(#map-preview:not([hidden])) > .map-desc { grid-column: 2; }
+  .play-card .btn-play { min-height: 54px; font-size: 1.3rem; }
+  .play-card .btn-secondary { margin-top: 8px; }
+}
+@media (max-width: 560px) {
   .top-nav button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .mode-name { display: none; }
 }

@@ -42,7 +42,60 @@ const gens = {
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (r() - 0.5) * 3, y - 2 - r() * 4); ctx.stroke();
     }
   },
+  foliage(ctx, w, h, r) {
+    ctx.fillStyle = "#e4e4e4"; ctx.fillRect(0, 0, w, h);
+    // Small overlapping leaves give canopy boxes a soft, irregular surface.
+    for (let i = 0; i < 260; i++) {
+      const v = 190 + Math.floor(r() * 65);
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.beginPath();
+      ctx.ellipse(r() * w, r() * h, 1.5 + r() * 3.5, 1 + r() * 2, r() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    noise(ctx, w, h, r, 16, 2, 250);
+  },
+  needles(ctx, w, h, r) {
+    ctx.fillStyle = "#ececec"; ctx.fillRect(0, 0, w, h);
+    for (let i = 0; i < 650; i++) {
+      const v = 190 + Math.floor(r() * 65), x = r() * w, y = r() * h;
+      const a = r() * Math.PI, len = 3 + r() * 7;
+      ctx.strokeStyle = `rgb(${v},${v},${v})`;
+      ctx.lineWidth = 0.7 + r() * 0.7;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len); ctx.stroke();
+    }
+  },
+  snow(ctx, w, h, r) {
+    ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, w, h);
+    noise(ctx, w, h, r, 15, 2, 252);
+    ctx.strokeStyle = "rgba(155,155,155,0.16)"; ctx.lineWidth = 1;
+    for (let i = 0; i < 28; i++) {
+      const x = r() * w, y = r() * h;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + 6, y - 1, x + 12 + r() * 12, y + 1); ctx.stroke();
+    }
+  },
+  ice(ctx, w, h, r) {
+    ctx.fillStyle = "#f5f5f5"; ctx.fillRect(0, 0, w, h);
+    noise(ctx, w, h, r, 16, 2, 252);
+    for (let i = 0; i < 25; i++) {
+      const x = r() * w, y = r() * h, dx = 8 + r() * 19;
+      ctx.strokeStyle = i % 3 ? "rgba(125,125,125,0.19)" : "rgba(255,255,255,0.8)";
+      ctx.lineWidth = i % 3 ? 1 : 2;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.lineTo(x + dx * 0.48, y - 1 - r() * 3);
+      ctx.lineTo(x + dx, y - 2 + r() * 2); ctx.stroke();
+    }
+  },
   dirt(ctx, w, h, r) { ctx.fillStyle = "#eee"; ctx.fillRect(0, 0, w, h); noise(ctx, w, h, r, 60, 2, 250); noise(ctx, w, h, r, 40, 4, 240); },
+  gravel(ctx, w, h, r) {
+    ctx.fillStyle = "#eeeeee"; ctx.fillRect(0, 0, w, h);
+    for (let i = 0; i < 480; i++) {
+      const v = 185 + Math.floor(r() * 70);
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.beginPath(); ctx.ellipse(r() * w, r() * h, 0.7 + r() * 2.5, 0.6 + r() * 1.7, r() * 3, 0, 6.3); ctx.fill();
+    }
+  },
   wood(ctx, w, h, r) {
     ctx.fillStyle = "#f0f0f0"; ctx.fillRect(0, 0, w, h);
     const boards = 4;
@@ -107,6 +160,45 @@ const gens = {
     ctx.fillStyle = "#f0f0f0"; ctx.fillRect(0, 0, w, h);
     noise(ctx, w, h, r, 45, 1, 245); noise(ctx, w, h, r, 30, 3, 240);
     ctx.fillStyle = "rgba(130,130,130,0.35)"; ctx.fillRect(0, h / 2, w, 1); ctx.fillRect(w / 2, 0, 1, h);
+  },
+  stone(ctx, w, h, r) {
+    ctx.fillStyle = "#efefef"; ctx.fillRect(0, 0, w, h);
+    noise(ctx, w, h, r, 48, 2, 248); noise(ctx, w, h, r, 30, 5, 243);
+    ctx.strokeStyle = "rgba(90,90,90,0.22)"; ctx.lineWidth = 1;
+    for (let i = 0; i < 18; i++) {
+      const x = r() * w, y = r() * h;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.lineTo(x + (r() - 0.5) * 18, y + (r() - 0.5) * 10);
+      ctx.lineTo(x + (r() - 0.5) * 25, y + (r() - 0.5) * 20);
+      ctx.stroke();
+    }
+  },
+  sandstone(ctx, w, h, r) {
+    ctx.fillStyle = "#f0f0f0"; ctx.fillRect(0, 0, w, h);
+    noise(ctx, w, h, r, 44, 2, 250); noise(ctx, w, h, r, 28, 5, 244);
+    let y = 7;
+    while (y < h) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 8; x <= w; x += 8) ctx.lineTo(x, y + (r() - 0.5) * 3);
+      ctx.strokeStyle = "rgba(90,70,65,0.26)";
+      ctx.lineWidth = 1 + r() * 2;
+      ctx.stroke();
+      y += 11 + r() * 10;
+    }
+  },
+  brick(ctx, w, h, r) {
+    ctx.fillStyle = "#d8d8d8"; ctx.fillRect(0, 0, w, h);
+    const bh = 22, bw = 42;
+    for (let row = -1; row <= Math.ceil(h / bh); row++) {
+      const offset = row % 2 ? bw / 2 : 0;
+      for (let x = -bw; x < w + bw; x += bw) {
+        const shade = 225 + Math.floor(r() * 27);
+        ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+        ctx.fillRect(x + offset + 2, row * bh + 2, bw - 3, bh - 3);
+      }
+    }
+    noise(ctx, w, h, r, 26, 2, 245);
   },
   asphalt(ctx, w, h, r) { ctx.fillStyle = "#e8e8e8"; ctx.fillRect(0, 0, w, h); noise(ctx, w, h, r, 90, 1, 255); },
   grate(ctx, w, h, r) {
@@ -175,14 +267,27 @@ const gens = {
 export function textureKindFor(name) {
   const n = name.toLowerCase();
   const rules = [
-    [/grass|lawn/, "grass"], [/dirt|mud|sand/, "dirt"], [/crate|pallet/, "crate"],
-    [/plank|wood|fence|board|cutting/, "wood"], [/hay|straw/, "hay"],
-    [/grate|vent/, "grate"], [/hazard|stripe/, "hazard"], [/roof|tin/, "roof"],
+    [/water/, "water"],
+    [/snow/, "snow"], [/^(?:ice|(?:blue|deep|frost|glacier)ice|ice(?:cliff|wall|shelf))$/, "ice"],
+    [/pinefloor|pineneedles|pinedark|pinelight|lakepine|seapine|firneedles/, "needles"],
+    [/hedge|corn.*grass/, "foliage"],
+    [/grass|lawn|turf|heath|mistmoss|junglefloor/, "grass"],
+    [/canopy|leaf|foliage|flower|lichen|fern|reed/, "foliage"],
+    [/sandstone|roserock|rosestrata|canyonshade|canyonlight/, "sandstone"],
+    [/limestone|granite|basalt|laterite|tuff|coralstone|stone|cobble|cliff|rock|slate|pumice|scoria|paving|basinedge|caveshade|arcade/, "stone"],
+    [/brick|terracotta|masonry/, "brick"],
+    [/gravel/, "gravel"],
+    [/dirt|mud|sand|earth|soil|silt|dust|ash|beach|shore|channel|terraceline/, "dirt"],
+    [/crate|pallet/, "crate"],
+    [/cardboard|box/, "cardboard"],
+    [/fence_?metal/, "metal"],
+    [/plank|wood|fence|board|cutting|bark|trunk|basket|timber|camppole/, "wood"], [/hay|straw/, "hay"],
+    [/grate|vent/, "grate"], [/fadedstripe/, "plain"], [/hazard|stripe/, "hazard"], [/roof|tin/, "roof"],
     [/check/, "checker"], [/tile/, "tile"], [/asphalt|road|tar/, "asphalt"],
-    [/concrete|stone|counter/, "concrete"], [/metal|steel|chrome|dumpster|toaster|trailer|belt|car/, "metal"],
-    [/barnred|wall|dinerwall|siding/, "siding"], [/bread|pancake|toast|butter/, "bread"],
-    [/cardboard|box/, "cardboard"], [/vinyl|fabric|cloth|tire/, "fabric"], [/water/, "water"],
-    [/glow|neon|light/, "glow"],
+    [/concrete|counter/, "concrete"], [/metal|steel|chrome|dumpster|toaster|trailer|belt|cargo|turbineshadow|car/, "metal"],
+    [/barnred|wall|dinerwall|siding|kiosk/, "siding"], [/bread|pancake|toast|butter/, "bread"],
+    [/vinyl|fabric|cloth|tire|canvas|awning|tent/, "fabric"],
+    [/glow|neon|light|ember/, "glow"],
   ];
   for (const [re, k] of rules) if (re.test(n)) return k;
   return "plain";

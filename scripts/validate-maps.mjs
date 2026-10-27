@@ -3,7 +3,8 @@
 //  - floor coverage (no holes to the void inside bounds)
 //  - spawns/pickups/nests: not inside solids, standing exactly on a floor top, enough team spawns
 //  - reachability: every spawn/pickup/nest is in the same strongly-connected walk/jump/drop
-//    graph as the first spawn (coarse 0.5u grid using the canonical physics constants)
+//    graph as the first spawn, with no large reachable one-way areas
+//    (coarse 0.5u grid using the canonical physics constants)
 //  - spawn safety (team modes): no team-1 spawn has a clear line from its eye to the body centre
 //    of a team-2 spawn inside fog range, so nobody can snipe the enemy spawn from their own base
 // Usage: node scripts/validate-maps.mjs [mapId...]   (exit 1 on any error)
@@ -23,11 +24,14 @@ const PICKUP_TYPES = Object.keys(rules.pickups.types);
 
 const want = process.argv.slice(2);
 const files = readdirSync(join(dataDir, "maps")).filter((f) => f.endsWith(".json") && f !== "index.json");
+const index = JSON.parse(readFileSync(join(dataDir, "maps", "index.json"), "utf8"));
+const loaded = new Map();
 let failed = false;
 
 for (const f of files) {
   const map = JSON.parse(readFileSync(join(dataDir, "maps", f), "utf8"));
   if (want.length && !want.includes(map.id)) continue;
+  loaded.set(map.id, map);
   const errs = [], warns = [];
   const E = (m) => errs.push(m), W = (m) => warns.push(m);
   const world = makeWorld(map);
@@ -49,7 +53,7 @@ for (const f of files) {
   });
   if (map.boxes.length > 600) W(`many boxes (${map.boxes.length})`);
   const span = [bmax[0] - bmin[0], bmax[2] - bmin[2]];
-  if (Math.max(...span) < 40 || Math.max(...span) > 70) W(`map span ${span} outside 40..70`);
+  if (Math.max(...span) < 40 || Math.max(...span) > 110) W(`map span ${span} outside 40..110`);
 
   // ---- floor coverage: every 1u cell centre inside bounds has some solid under it
   let holes = 0;
@@ -146,6 +150,15 @@ for (const f of files) {
       else if (!b[id]) E(`${label} at ${p} is a dead end (cannot get back)`);
       else reach++;
     }
+    const stranded = nodes.filter((n) => a[n.id] && !b[n.id]);
+    if (stranded.length) {
+      const sample = stranded.slice(0, 3).map((n) => `(${n.cx}, ${n.h}, ${n.cz})`).join(", ");
+      // Small isolated slivers can be artifacts of the coarse probe. A larger cluster is
+      // a gameplay trap, such as a sunken channel a player can drop into but not exit.
+      const report = `${stranded.length} reachable walk nodes cannot return to a spawn; examples: ${sample}`;
+      if (stranded.length > 16) E(report);
+      else W(report);
+    }
   }
 
   const ok = errs.length === 0;
@@ -153,5 +166,33 @@ for (const f of files) {
   console.log(`${ok ? "OK  " : "FAIL"} ${map.id.padEnd(11)} ${map.boxes.length} boxes, ${map.spawns.length} spawns (T1 ${t1}/T2 ${t2}), ${map.pickups.length} pickups, ${map.nests.length} nests, ${nodes.length} walk nodes, ${reach}/${targets.length} targets connected`);
   for (const e of errs) console.log("   error:", e);
   for (const w of warns) console.log("   warn: ", w);
+}
+if (!want.length) {
+  const errors = [];
+  const ids = index.maps.map((m) => m.id);
+  const fileIds = files.map((f) => f.slice(0, -5));
+  for (const id of ids) if (ids.filter((x) => x === id).length !== 1) errors.push(`duplicate index id ${id}`);
+  for (const id of ids) if (!fileIds.includes(id)) errors.push(`index refers to missing map ${id}`);
+  for (const id of fileIds) if (!ids.includes(id)) errors.push(`map ${id} is absent from index`);
+  for (const entry of index.maps) {
+    const map = loaded.get(entry.id);
+    if (typeof entry.group !== "string" || !entry.group.trim()) errors.push(`${entry.id} has no map group`);
+    if (map && (entry.name !== map.name || entry.desc !== map.desc ||
+      JSON.stringify([...entry.modes].sort()) !== JSON.stringify([...map.modes].sort()))) {
+      errors.push(`${entry.id} metadata disagrees between index and map file`);
+    }
+  }
+  for (const [modeId, mode] of Object.entries(modes.modes)) {
+    for (const id of mode.maps) if (!ids.includes(id)) errors.push(`${modeId} rotation refers to missing map ${id}`);
+    for (const id of ids) {
+      const advertised = index.maps.find((m) => m.id === id)?.modes?.includes(modeId);
+      if (advertised !== mode.maps.includes(id)) errors.push(`${id} and ${modeId} disagree between index and mode rotation`);
+    }
+    if (new Set(mode.maps).size !== mode.maps.length) errors.push(`${modeId} rotation has duplicate maps`);
+  }
+  if (errors.length) {
+    failed = true;
+    for (const error of errors) console.log("   error:", error);
+  }
 }
 process.exit(failed ? 1 : 0);

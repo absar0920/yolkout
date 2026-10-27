@@ -61,6 +61,7 @@ const swapTeam = (t) => (t === 1 ? 2 : t === 2 ? 1 : 0);
 export class MapBuilder {
   constructor(meta) {
     this.meta = meta;
+    this.materials = { ...MATERIALS, ...(meta.materials || {}) };
     this.boxes = []; this.spawns = []; this.pickups = []; this.nests = [];
   }
   box(x0, y0, z0, x1, y1, z1, mat, extra = {}) {
@@ -69,7 +70,7 @@ export class MapBuilder {
       max: [r3(Math.max(x0, x1)), r3(Math.max(y0, y1)), r3(Math.max(z0, z1))],
       mat, ...extra,
     };
-    if (!MATERIALS[mat]) throw new Error(`unknown material ${mat}`);
+    if (!this.materials[mat]) throw new Error(`unknown material ${mat}`);
     this.boxes.push(b);
     return b;
   }
@@ -144,7 +145,7 @@ export class MapBuilder {
   }
   build() {
     const used = [...new Set(this.boxes.map((b) => b.mat))].sort();
-    const materials = Object.fromEntries(used.map((m) => [m, MATERIALS[m]]));
+    const materials = Object.fromEntries(used.map((m) => [m, this.materials[m]]));
     const m = this.meta;
     return {
       format: 1, id: m.id, name: m.name, desc: m.desc, author: "Yolkout", modes: m.modes,

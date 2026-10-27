@@ -7,8 +7,10 @@ import * as THREE from "../../vendor/three.module.min.js";
 import { detailTexture, textureKindFor } from "./textures.js";
 
 // texture world size (units per repeat) per kind
-const TILE = { grass: 4, dirt: 4, wood: 2.5, crate: 1, hay: 2, metal: 2, tile: 2, checker: 2, concrete: 4, asphalt: 4,
-  grate: 2, hazard: 1.5, roof: 3, siding: 2, bread: 2, cardboard: 1.5, fabric: 1, water: 4, glow: 1, plain: 3 };
+const TILE = { grass: 4, foliage: 2.5, needles: 2.5, snow: 4.5, ice: 3, dirt: 4, gravel: 2.5,
+  wood: 2.5, crate: 1, hay: 2, metal: 2, tile: 2, checker: 2, concrete: 4, asphalt: 4,
+  grate: 2, hazard: 1.5, roof: 3, siding: 2, stone: 3, sandstone: 3.5, brick: 2.5,
+  bread: 2, cardboard: 1.5, fabric: 1, water: 4, glow: 1, plain: 3 };
 
 function hash(i) {
   let h = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
@@ -95,7 +97,8 @@ export function buildMapMesh(map, opts = {}) {
     g.computeBoundingSphere();
     g.computeBoundingBox();
 
-    const isGlass = /glass|jar/.test(matName), isWater = /water/.test(matName);
+    const lowerName = matName.toLowerCase();
+    const isGlass = /glass|jar/.test(lowerName), isWater = /water/.test(lowerName);
     const params = {
       color: new THREE.Color(md.color), map: detailTexture(kind, opts.anisotropy || 4), vertexColors: true,
     };

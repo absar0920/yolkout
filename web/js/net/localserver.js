@@ -48,9 +48,14 @@ export class LocalServer {
     this.maps = {};
   }
 
-  /** Load every map of the mode (they are small) so match rotation is synchronous. */
+  /** Load only the first map; later maps are fetched during intermission. */
   async init() {
-    await Promise.all(this.mode.maps.map(async (id) => { this.maps[id] = await this.d.map(id); }));
+    this.matchMap = this.wantMap || this.mode.maps[Math.floor(Math.random() * this.mode.maps.length)];
+    await this._ensureMap(this.matchMap);
+  }
+
+  async _ensureMap(id) {
+    if (!this.maps[id]) this.maps[id] = await this.d.map(id);
   }
 
   /** A WebSocket-like object for the Connection class. */
@@ -160,7 +165,6 @@ export class LocalServer {
   _hello(m) {
     if (this.human) return;
     const W = this.d.weapons;
-    this.matchMap = this.wantMap || this.mode.maps[Math.floor(Math.random() * this.mode.maps.length)];
     this._setMap(this.matchMap);
     this._resetMatch();
     const mel = this._melees().includes(m.mel) ? m.mel : this._defMelee();
@@ -360,7 +364,7 @@ export class LocalServer {
     // 7. match timer
     if (live) {
       if (this.k >= this.endK) this._end();
-    } else if (this.k >= this.nextStartK) this._start();
+    } else if (this.k >= this.nextStartK && this.maps[this.nextMap]) this._start();
     // 8. snapshots & scoreboard
     if (this.k % this.rules.net.snapshotEvery === 0 && this.human) this._snapshot();
     if (this.k % tr === 0 || this.sbDirty) this._sb();
@@ -767,8 +771,18 @@ export class LocalServer {
     this.nextMap = (maps.length ? maps : this.mode.maps)[Math.floor(Math.random() * (maps.length || this.mode.maps.length))];
     const inSec = this.rules.rooms.intermissionSec;
     this.nextStartK = this.k + inSec * this.rules.net.tickRate;
-    this._emit({ t: "end", wt, wp, in: inSec, next: this.nextMap,
-      sb: { p: [...this.players.values()].map((P) => [P.id, P.sc, P.ki, P.de, P.st, 0]), ts: this.ts.slice() } });
+    const end = { t: "end", wt, wp, in: inSec, next: this.nextMap,
+      sb: { p: [...this.players.values()].map((P) => [P.id, P.sc, P.ki, P.de, P.st, 0]), ts: this.ts.slice() } };
+    this._emit(end);
+    const next = this.nextMap;
+    this._ensureMap(next).catch((e) => {
+      console.error(`Could not load practice map ${next}`, e);
+      if (this.state !== "ended" || this.nextMap !== next) return;
+      // The current map is already cached and remains playable if a fetch fails.
+      this.nextMap = this.mapId;
+      this._emit({ ...end, next: this.mapId, in: Math.max(0, (this.nextStartK - this.k) / this.rules.net.tickRate) });
+      this._flush();
+    });
   }
 
   _start() {

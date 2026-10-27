@@ -8,7 +8,8 @@
         "ffa",
         "teams",
         "nest"
-      ]
+      ],
+      "group": "Original arenas"
     },
     {
       "id": "countertop",
@@ -18,7 +19,8 @@
         "ffa",
         "teams",
         "nest"
-      ]
+      ],
+      "group": "Original arenas"
     },
     {
       "id": "hatchery",
@@ -28,7 +30,8 @@
         "ffa",
         "teams",
         "nest"
-      ]
+      ],
+      "group": "Original arenas"
     },
     {
       "id": "diner",
@@ -38,7 +41,404 @@
         "ffa",
         "teams",
         "nest"
-      ]
+      ],
+      "group": "Original arenas"
+    },
+    {
+      "id": "rose_gorge",
+      "name": "Rose Gorge",
+      "desc": "Wind through rose sandstone and a dry watercourse, then fight across the ledges above the canyon.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "cloud_terrace",
+      "name": "Cloud Terrace",
+      "desc": "Climb a misty ridge by staggered stairways or flank through the lower terrace fields.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "reservoir_grove",
+      "name": "Reservoir Grove",
+      "desc": "Cross a forested hydraulic work by shallow basin, raised bridge, or the outer embankments.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "tuff_labyrinth",
+      "name": "Tuff Labyrinth",
+      "desc": "Duck around eroded rock screens and short covered passages beneath pale volcanic pinnacles.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "boulder_bazaar",
+      "name": "Boulder Bazaar",
+      "desc": "A pillared trading street sits among granite boulders, with open riverbed flanks on both sides.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "granite_ring",
+      "name": "Granite Ring",
+      "desc": "A sunlit dry-stone court: enter through the broken ring or circle its outer paths.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "mesa_alcove",
+      "name": "Mesa Alcove",
+      "desc": "A sandstone ridge, sheltered shelves and two canyon bypasses beneath a wide desert sky.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "ash_quarter",
+      "name": "Ash Quarter",
+      "desc": "Roofless courtyards and charcoal streets lead to a columned square.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "riverbend_plain",
+      "name": "Riverbend Plain",
+      "desc": "Warm brick terraces and shady paths border a pale, winding river.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "basalt_channels",
+      "name": "Basalt Channels",
+      "desc": "Basalt islets and narrow causeways cross reflective, ankle-deep channels.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "highland_caravan",
+      "name": "Highland Caravan",
+      "desc": "A highland trade road winds between red-earth terraces, canvas stalls, and a climbable stone pass.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "atlantic_outpost",
+      "name": "Atlantic Outpost",
+      "desc": "Turf-covered halls, timber sheds, and a windy coastal landing create three paths around a longhouse.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "forest_causeway",
+      "name": "Forest Causeway",
+      "desc": "A raised red-stone road cuts through rainforest, with open canopy trails on both sides.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "monolith_gardens",
+      "name": "Monolith Gardens",
+      "desc": "A climbable rock garden rises above mirrored water rills, terraces, and flowering courtyards.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "volcanic_coast",
+      "name": "Volcanic Coast",
+      "desc": "A basalt terrace between a sea shelf and an inland quarry, with black-stone columns for cover.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "coral_port",
+      "name": "Coral Port",
+      "desc": "A coral-stone trade port has a roof route above its storehouse, markets to one side, and quays to the other.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Historic landscapes"
+    },
+    {
+      "id": "pine_camp",
+      "name": "Pine Camp",
+      "desc": "Three trails wind around a pine campground and converge at a climbable fire lookout.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Outdoors and water"
+    },
+    {
+      "id": "lakeside_cabins",
+      "name": "Lakeside Cabins",
+      "desc": "Circle a lake by cabin yards, shoreline shallows, or a raised pier and island crossing.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Outdoors and water"
+    },
+    {
+      "id": "marsh_boardwalk",
+      "name": "Marsh Boardwalk",
+      "desc": "Fight across a lattice of raised wooden paths, shallow marsh, and a central observation deck.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Outdoors and water"
+    },
+    {
+      "id": "canyon_camp",
+      "name": "Canyon Camp",
+      "desc": "A winding dry wash links sheltered canyon camps below two climbable rim shelves.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Outdoors and water"
+    },
+    {
+      "id": "island_crossings",
+      "name": "Island Crossings",
+      "desc": "Choose a bridge, a string of sandy islets, or the shallow lagoon between two camp shores.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Outdoors and water"
+    },
+    {
+      "id": "frozen_creek",
+      "name": "Frozen Creek",
+      "desc": "Cross a frozen creek by three footbridges or its level ice, then circle snowy shelters.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Outdoors and water"
+    },
+    {
+      "id": "redwood_trails",
+      "name": "Redwood Trails",
+      "desc": "Wind around giant trunks, fallen logs and a dry creek to contest a climbable central stump.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Outdoors and water"
+    },
+    {
+      "id": "ridge_watch",
+      "name": "Ridge Watch",
+      "desc": "Twin stone overlooks command a long saddle, while the lower trails cross beneath their sightlines.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Long range"
+    },
+    {
+      "id": "quarry_lookout",
+      "name": "Quarry Lookout",
+      "desc": "Working terraces overlook a broad cut; stone stacks and haul lanes offer routes through the open floor.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Long range"
+    },
+    {
+      "id": "desert_airfield",
+      "name": "Desert Airfield",
+      "desc": "A long exposed runway links two blast shelters; hangars and a raised control deck flank the strip.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Long range"
+    },
+    {
+      "id": "beacon_cliffs",
+      "name": "Beacon Cliffs",
+      "desc": "Two exposed signal cliffs face across a salt-worn crossing, with lower coastal trails beneath them.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Long range"
+    },
+    {
+      "id": "glacier_pass",
+      "name": "Glacier Pass",
+      "desc": "A raised ice traverse overlooks a sheltered underpass; broken blue ridges split the snowy side routes.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Long range"
+    },
+    {
+      "id": "windfarm_heights",
+      "name": "Windfarm Heights",
+      "desc": "Service platforms and turbine foundations punctuate an open highland of long diagonal firing lanes.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Long range"
+    },
+    {
+      "id": "dry_reservoir",
+      "name": "Dry Reservoir",
+      "desc": "A drained basin surrounds a three-gate spillway; raised service banks give long views across the silt.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Long range"
+    },
+    {
+      "id": "hedge_maze",
+      "name": "Hedge Maze",
+      "desc": "Looping garden passages circle a pale pavilion and two raised lookout terraces.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Mazes and city"
+    },
+    {
+      "id": "cargo_grid",
+      "name": "Cargo Grid",
+      "desc": "Staggered freight stacks and a central crane bridge split a wide loading yard into looping lanes.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Mazes and city"
+    },
+    {
+      "id": "drainworks",
+      "name": "Drainworks",
+      "desc": "Water channels, pump galleries and a walkable central weir make three crossings through an open utility plant.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Mazes and city"
+    },
+    {
+      "id": "rooftop_block",
+      "name": "Rooftop Block",
+      "desc": "Raised plant-room roofs, service cores and open sky alleys above a compact night-time block.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Mazes and city"
+    },
+    {
+      "id": "corn_maze",
+      "name": "Corn Maze",
+      "desc": "Harvested cross paths loop between tall corn rows, paired timber decks and an orange wind marker.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Mazes and city"
+    },
+    {
+      "id": "neon_lanes",
+      "name": "Neon Lanes",
+      "desc": "A night market of luminous alleys, staggered kiosks and a high central skybridge.",
+      "modes": [
+        "ffa",
+        "teams",
+        "nest"
+      ],
+      "group": "Mazes and city"
     }
   ]
 }
